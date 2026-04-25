@@ -195,15 +195,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Progress & Fix Tracking Section */}
+      {/* Improvement Path & Progress Section */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex-1 max-w-lg">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-1">
-              <Award className="w-5 h-5 text-indigo-600" /> Improvement Progress
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-2">
+              <Award className="w-5 h-5 text-indigo-600" /> Action Plan Progress
             </h2>
-            <p className="text-sm text-gray-500 mb-3">
-              You have successfully marked <span className="font-bold text-gray-900">{fixedCount} out of {totalIssues}</span> issues as fixed.
+            <p className="text-sm text-gray-500 mb-4">
+              You have resolved <span className="font-bold text-gray-900">{fixedCount} of {totalIssues}</span> critical issues.
             </p>
             <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden w-full border border-slate-200">
               <div 
@@ -214,29 +214,40 @@ export default function Dashboard() {
           </div>
           
           <div className="flex flex-col items-end">
-            {fixedActions.length > 0 && (
-              <div className="animate-in fade-in slide-in-from-right-8 duration-500 mb-2">
-                <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest text-right mb-1">Projected Score After Fixes</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-400 font-mono text-xl line-through">{Math.round(currentScore)}</span>
-                  <span className="text-gray-400">&rarr;</span>
-                  <span className="text-3xl font-black text-indigo-600 font-mono">{Math.round(projectedScore)}</span>
-                  <span className="text-sm font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">+{Math.round(projectedScore - currentScore)}</span>
+            <div className="mb-4 text-right">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Improvement Path</p>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-center">
+                  <span className="text-2xl font-black text-gray-900 font-mono">{Math.round(currentScore)}</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase">Current</span>
+                </div>
+                <span className="text-gray-300">&rarr;</span>
+                <div className="flex flex-col items-center">
+                  <span className="text-sm font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 mb-0.5">+{Math.round(projectedGains)}</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase">After Fixes</span>
+                </div>
+                <span className="text-gray-300">&rarr;</span>
+                <div className="flex flex-col items-center">
+                  <span className={clsx("text-3xl font-black font-mono transition-colors", projectedGains > 0 ? "text-indigo-600" : "text-gray-900")}>
+                    {Math.round(projectedScore)}
+                  </span>
+                  <span className="text-[10px] text-indigo-500 font-bold uppercase">Final Score</span>
                 </div>
               </div>
-            )}
+            </div>
+            
             <button 
               onClick={handleRerun}
               disabled={fixedActions.length === 0}
               className={clsx(
-                "px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm border",
+                "px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm border w-full justify-center",
                 fixedActions.length > 0 
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600" 
                   : "bg-slate-50 text-gray-400 border-slate-200 cursor-not-allowed"
               )}
             >
               <RotateCw className={clsx("w-4 h-4", fixedActions.length > 0 && "animate-spin-once")} /> 
-              Re-run Analysis Pipeline
+              Re-run to Validate Changes
             </button>
           </div>
         </div>
