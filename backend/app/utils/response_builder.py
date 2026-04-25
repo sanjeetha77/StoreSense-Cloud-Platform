@@ -1,0 +1,463 @@
+"""
+Response Builder — Final Aggregation Layer
+
+Transforms raw pipeline state (StoreAnalysisState) into the fully structured,
+UI-ready JSON response. This is the ONLY place where pipeline data maps to
+the response schema.
+
+Design principle:
+  Backend returns fully UI-ready data. Frontend only renders — never computes.
+
+Sections built:
+  store          → store metadata
+  score          → overall + status label + confidence + breakdown
+  issues[]       → normalized, grouped, sorted by impact
+  action_plan[]  → structured fix list, sorted by score_gain
+  perception{}   → formatted AI perception with decision + gaps + llm_status
+  what_if{}      → simulation with per-action gain list
+  meta{}         → timing, model used, errors
+"""
+
+from datetime import datetime, timezone
+from app.services.llm import MODELS   # primary model name
+
+# ---------------------------------------------------------------------------
+# Simulated buyer query (mirror of perception agent prompt)
+# ---------------------------------------------------------------------------
+
+SIMULATED_BUYER_QUERY = (
+    "I'm looking to buy products from this store. Can I trust it? "
+    "Are the products well-described and professionally presented? "
+    "What concerns would I have as a buyer?"
+)
+
+# ---------------------------------------------------------------------------
+# Issue configuration — type → UI metadata + score impact
+# ---------------------------------------------------------------------------
+
+ISSUE_CONFIG: dict[str, dict] = {
+    "missing_description": {
+        "title": "Missing Product Descriptions",
+        "impact": "high",
+        "score_impact": 12,
+        "description": (
+            "Products without descriptions are invisible to AI recommendation engines. "
+            "Descriptions are the primary signal used to understand and match products to buyer queries."
+        ),
+    },
+    "missing_images": {
+        "title": "Missing Product Images",
+        "impact": "high",
+        "score_impact": 10,
+        "description": (
+            "Products without images score lower in AI confidence assessments. "
+            "Visual content is critical for buyer trust and conversion decisions."
+        ),
+    },
+    "missing_tags": {
+        "title": "Missing Product Tags",
+        "impact": "medium",
+        "score_impact": 7,
+        "description": (
+            "Tags help AI systems categorize and surface products in relevant searches. "
+            "Untagged products are harder to discover in AI-driven recommendation flows."
+        ),
+    },
+    "short_title": {
+        "title": "Short or Generic Product Titles",
+        "impact": "medium",
+        "score_impact": 5,
+        "description": (
+            "Titles that are too short reduce AI discoverability. "
+            "Use the format: [Brand] [Product Type] [Key Feature] for best results."
+        ),
+    },
+    "no_variants": {
+        "title": "Missing Pricing or Variants",
+        "impact": "medium",
+        "score_impact": 5,
+        "description": (
+            "Products without variants or pricing cannot be properly evaluated "
+            "by AI shopping recommendation systems."
+        ),
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Action effort heuristics and guide links
+# ---------------------------------------------------------------------------
+
+EFFORT_MAP: dict[str, str] = {
+    "missing_description": "medium",
+    "missing_images": "medium",
+    "missing_tags": "low",
+    "short_title": "low",
+    "no_variants": "high",
+    "add_return_policy": "low",
+    "add_shipping_policy": "low",
+    "add_reviews": "medium",
+}
+
+GUIDE_LINKS: dict[str, str] = {
+    "missing_description":  "https://help.shopify.com/en/manual/products/add-update-products",
+    "missing_images":       "https://help.shopify.com/en/manual/products/product-media",
+    "missing_tags":         "https://help.shopify.com/en/manual/products/organize-your-products-with-tags",
+    "short_title":          "https://help.shopify.com/en/manual/products/add-update-products",
+    "no_variants":          "https://help.shopify.com/en/manual/products/variants",
+    "add_return_policy":    "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "add_shipping_policy":  "https://help.shopify.com/en/manual/shipping/setting-up-and-managing-your-shipping",
+    "add_reviews":          "https://apps.shopify.com/product-reviews",
+}
+
+# ---------------------------------------------------------------------------
+# Score status label
+# ---------------------------------------------------------------------------
+
+def _score_status(score: float) -> str:
+    if score >= 80:
+        return "Excellent"
+    if score >= 55:
+        return "Good"
+    return "Needs Improvement"
+
+
+# ---------------------------------------------------------------------------
+# Overall analysis confidence (how reliable is the result)
+# ---------------------------------------------------------------------------
+
+def _calc_confidence(state: dict, fallback_used: bool) -> float:
+    """
+    Confidence represents how reliable this analysis is (0–100).
+
+    Rules:
+      - No products fetched          → 20  (critical data missing)
+      - LLM fallback was used        → 65  (MEDIUM — partial AI output)
+      - Full data + LLM success      → 85+ (HIGH)
+      - Deductions for missing trust signals (each reduces certainty)
+    """
+    if not state.get("products"):
+        return 20.0
+
+    base = 65.0 if fallback_used else 85.0
+
+    trust = state.get("trust_signals", {})
+    if not trust.get("has_return_policy"):
+        base -= 5
+    if not trust.get("has_shipping_policy"):
+        base -= 5
+    if not trust.get("has_reviews"):
+        base -= 3
+
+    return round(max(20.0, min(100.0, base)), 1)
+
+
+# ---------------------------------------------------------------------------
+# Issues — group and normalize
+# ---------------------------------------------------------------------------
+
+def _build_issues(state: dict) -> list[dict]:
+    """
+    Convert raw flat issue list into structured, grouped, sorted issue objects.
+
+    Output per issue:
+      id            snake_case type identifier
+      title         UI-friendly label
+      impact        high | medium | low
+      score_impact  numeric penalty contribution
+      description   explanation of why this matters
+      affected_items list of {product_id, title} dicts
+      affected_count how many products are affected
+      status        always "open" (no resolution tracking yet)
+    """
+    raw_issues = state.get("issues", [])
+
+    # Group by type
+    grouped: dict[str, list] = {}
+    for issue in raw_issues:
+        itype = issue.get("type", "unknown")
+        grouped.setdefault(itype, []).append(issue)
+
+    # Sort by score_impact descending
+    sorted_types = sorted(
+        grouped.keys(),
+        key=lambda t: ISSUE_CONFIG.get(t, {}).get("score_impact", 0),
+        reverse=True,
+    )
+
+    result = []
+    for itype in sorted_types:
+        items = grouped[itype]
+        config = ISSUE_CONFIG.get(itype, {
+            "title": itype.replace("_", " ").title(),
+            "impact": "medium",
+            "score_impact": 3,
+            "description": f"Issue detected: {itype.replace('_', ' ')}.",
+        })
+
+        result.append({
+            "id": itype,
+            "title": config["title"],
+            "impact": config["impact"],
+            "score_impact": config["score_impact"],
+            "description": config["description"],
+            "affected_items": [
+                {"product_id": i.get("product_id"), "title": i.get("product_title", "")}
+                for i in items
+            ],
+            "affected_count": len(items),
+            "status": "open",
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Action plan — structured and prioritized
+# ---------------------------------------------------------------------------
+
+def _build_action_plan(state: dict, issues_structured: list[dict]) -> list[dict]:
+    """
+    Generate a structured, prioritized action plan from:
+      - Detected completeness issues (each issue type → one action)
+      - Missing trust signals (return policy, shipping, reviews)
+
+    Sorted by score_gain descending. Priority number assigned after sorting.
+    """
+    actions: list[dict] = []
+    seen: set = set()
+
+    # Actions from detected issues
+    for issue in issues_structured:
+        itype = issue["id"]
+        if itype in seen:
+            continue
+        seen.add(itype)
+        actions.append({
+            "_type": itype,
+            "title": f"Fix: {issue['title']}",
+            "score_gain": issue["score_impact"],
+            "effort": EFFORT_MAP.get(itype, "medium"),
+            "guide_link": GUIDE_LINKS.get(itype, "https://help.shopify.com"),
+        })
+
+    # Actions from missing trust signals
+    trust = state.get("trust_signals", {})
+
+    if not trust.get("has_return_policy"):
+        actions.append({
+            "_type": "add_return_policy",
+            "title": "Add a Return Policy",
+            "score_gain": 9,
+            "effort": EFFORT_MAP["add_return_policy"],
+            "guide_link": GUIDE_LINKS["add_return_policy"],
+        })
+
+    if not trust.get("has_shipping_policy"):
+        actions.append({
+            "_type": "add_shipping_policy",
+            "title": "Add a Shipping Policy",
+            "score_gain": 6,
+            "effort": EFFORT_MAP["add_shipping_policy"],
+            "guide_link": GUIDE_LINKS["add_shipping_policy"],
+        })
+
+    if not trust.get("has_reviews"):
+        actions.append({
+            "_type": "add_reviews",
+            "title": "Enable Product Reviews",
+            "score_gain": 5,
+            "effort": EFFORT_MAP["add_reviews"],
+            "guide_link": GUIDE_LINKS["add_reviews"],
+        })
+
+    # Sort by score_gain, assign priority, strip internal _type
+    actions.sort(key=lambda x: -x["score_gain"])
+    for i, action in enumerate(actions, 1):
+        action["priority"] = i
+        action.pop("_type", None)
+
+    return actions
+
+
+# ---------------------------------------------------------------------------
+# Perception — structured with decision + llm_status
+# ---------------------------------------------------------------------------
+
+def _build_perception(state: dict, fallback_used: bool) -> dict:
+    """
+    Format raw perception agent output into the structured perception block.
+
+    Adds:
+      decision   → "Recommended" | "Not Recommended"  (derived from confidence)
+      query      → the simulated buyer query used
+      ai_response→ full LLM text (or fallback message)
+      gaps       → renamed from objections
+      llm_status → "active" | "fallback"
+    """
+    raw = state.get("perception", {})
+    confidence = raw.get("confidence", "LOW").upper()
+    if confidence not in ("HIGH", "MEDIUM", "LOW"):
+        confidence = "LOW"
+
+    reasoning = raw.get("reasoning", "")
+    objections = raw.get("objections", [])
+
+    return {
+        "confidence": confidence,
+        "decision": "Recommended" if confidence == "HIGH" else "Not Recommended",
+        "query": SIMULATED_BUYER_QUERY,
+        "ai_response": reasoning,
+        "reasoning": reasoning,
+        "gaps": objections,
+        "llm_status": "fallback" if fallback_used else "active",
+    }
+
+
+# ---------------------------------------------------------------------------
+# What-if simulation — per-action gain breakdown
+# ---------------------------------------------------------------------------
+
+def _build_what_if(state: dict) -> dict:
+    """
+    Build a what-if simulation with individual action gain items.
+
+    Uses the existing what_if data from the recommendation agent for totals,
+    then builds the per-action breakdown from issue + trust signal data.
+    """
+    existing = state.get("what_if", {})
+    current = round(existing.get("current_score", state.get("score", {}).get("total", 0)), 1)
+    potential = round(existing.get("potential_score", current), 1)
+    improvement = round(existing.get("improvement", 0), 1)
+
+    trust = state.get("trust_signals", {})
+    issues = state.get("issues", [])
+    issue_types = {i.get("type") for i in issues}
+    issue_counts = {}
+    for i in issues:
+        issue_counts[i["type"]] = issue_counts.get(i["type"], 0) + 1
+
+    # Build per-action gain list (top 6, sorted by gain)
+    actions: list[dict] = []
+
+    if "missing_description" in issue_types:
+        n = issue_counts["missing_description"]
+        actions.append({"label": f"Add descriptions to {n} product(s)", "gain": 12})
+
+    if "missing_images" in issue_types:
+        n = issue_counts["missing_images"]
+        actions.append({"label": f"Upload images for {n} product(s)", "gain": 10})
+
+    if not trust.get("has_return_policy"):
+        actions.append({"label": "Add Return Policy", "gain": 9})
+
+    if "missing_tags" in issue_types:
+        n = issue_counts["missing_tags"]
+        actions.append({"label": f"Tag {n} untagged product(s)", "gain": 7})
+
+    if not trust.get("has_shipping_policy"):
+        actions.append({"label": "Add Shipping Policy", "gain": 6})
+
+    if not trust.get("has_reviews"):
+        actions.append({"label": "Enable Product Reviews", "gain": 5})
+
+    if "short_title" in issue_types:
+        n = issue_counts["short_title"]
+        actions.append({"label": f"Improve titles for {n} product(s)", "gain": 5})
+
+    if "no_variants" in issue_types:
+        n = issue_counts["no_variants"]
+        actions.append({"label": f"Add variants/pricing to {n} product(s)", "gain": 5})
+
+    actions.sort(key=lambda x: -x["gain"])
+
+    return {
+        "current_score": current,
+        "potential_score": potential,
+        "improvement": improvement,
+        "actions": actions[:6],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main builder — called by the route after pipeline completes
+# ---------------------------------------------------------------------------
+
+def build_response(
+    state: dict,
+    start_time: datetime,
+    fallback_used: bool,
+    llm_model_used: str,
+) -> dict:
+    """
+    Build the complete, UI-ready API response from the final pipeline state.
+
+    Args:
+        state:          Final StoreAnalysisState after pipeline execution
+        start_time:     Request start time (UTC) for analysis_time calculation
+        fallback_used:  True if any LLM stage fell back to rule-based output
+        llm_model_used: Name of the LLM model that ran (or "rule-based")
+    """
+    errors = state.get("errors", [])
+    products = state.get("products", [])
+    score_data = state.get("score", {})
+    breakdown = score_data.get("breakdown", {})
+
+    # --- Overall status ---
+    has_ingestion_error = any(e.get("agent") == "ingestion" for e in errors)
+    if has_ingestion_error and not products:
+        status = "failed"
+    elif errors:
+        status = "partial_success"
+    else:
+        status = "success"
+
+    # --- Score section ---
+    overall = round(score_data.get("total", 0.0), 1)
+    confidence = _calc_confidence(state, fallback_used)
+
+    # --- Build structured sections ---
+    issues_structured = _build_issues(state)
+    action_plan = _build_action_plan(state, issues_structured)
+    perception = _build_perception(state, fallback_used)
+    what_if = _build_what_if(state)
+
+    # --- Meta ---
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+    return {
+        "status": status,
+
+        "store": {
+            "url": state.get("store_url", ""),
+        },
+
+        "score": {
+            "overall": overall,
+            "status": _score_status(overall),
+            "confidence": confidence,
+            "breakdown": {
+                "completeness": breakdown.get("completeness", 0),
+                "trust": breakdown.get("trust", 0),
+                "perception": breakdown.get("perception", 0),
+            },
+        },
+
+        "issues": issues_structured,
+
+        "action_plan": action_plan,
+
+        "perception": perception,
+
+        "what_if": what_if,
+
+        "meta": {
+            "analysis_time": f"{elapsed:.2f}s",
+            "llm_used": llm_model_used,
+            "fallback_used": fallback_used,
+            "products_analyzed": len(products),
+            "errors": [
+                f"[{e.get('agent', '?')}] {e.get('message', '')}"
+                for e in errors
+            ],
+        },
+    }
