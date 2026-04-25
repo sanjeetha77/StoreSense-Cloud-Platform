@@ -1,13 +1,15 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import { Store, Link2, Key, CheckCircle2, Shield, Activity, RefreshCw } from 'lucide-react';
+import { Store, Link2, Key, CheckCircle2, Shield, Activity, RefreshCw, Terminal } from 'lucide-react';
 import clsx from 'clsx';
 import { runAnalysis } from '../services/api';
+import { LogsModal } from '../components/LogsModal';
 
 export default function Settings() {
   const [storeUrl, setStoreUrl] = useState('ai-store-test-2.myshopify.com');
   const [apiKey, setApiKey] = useState('************************');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLogsOpen, setIsLogsOpen] = useState(false);
 
   useEffect(() => {
     const url = sessionStorage.getItem('storeUrl');
@@ -31,6 +33,8 @@ export default function Settings() {
       <Head>
         <title>Settings | AI Store Optimizer</title>
       </Head>
+
+      <LogsModal isOpen={isLogsOpen} onClose={() => setIsLogsOpen(false)} />
 
       <div className="mb-8 flex items-center justify-between border-b border-slate-200 pb-5">
         <div>
@@ -133,12 +137,12 @@ export default function Settings() {
 
         {/* Sidebar Logs */}
         <div className="lg:col-span-1">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 h-full shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 h-full shadow-sm flex flex-col">
             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Activity className="w-4 h-4 text-indigo-500" /> System Logs
             </h2>
             
-            <div className="space-y-5">
+            <div className="space-y-5 flex-1">
               {[
                 { time: '10:42 AM', msg: 'Analysis pipeline completed successfully', status: 'success' },
                 { time: '10:41 AM', msg: 'Simulating AI perception gaps', status: 'info' },
@@ -162,8 +166,11 @@ export default function Settings() {
               ))}
             </div>
             
-            <button className="mt-8 w-full py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
-              Download Full Logs
+            <button 
+              onClick={() => setIsLogsOpen(true)}
+              className="mt-8 w-full py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <Terminal className="w-4 h-4" /> View Full System Logs
             </button>
           </div>
         </div>

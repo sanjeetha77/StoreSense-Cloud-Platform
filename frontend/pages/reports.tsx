@@ -1,13 +1,22 @@
 import Head from 'next/head';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import { Calendar, Download, TrendingUp, AlertCircle, Package } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, BarChart, Bar } from 'recharts';
+import { Calendar, TrendingUp, AlertCircle, Package } from 'lucide-react';
+import { DownloadButton } from '../components/DownloadButton';
 
-const data = [
+const trendData = [
   { name: 'Week 1', score: 65, perception: 50 },
   { name: 'Week 2', score: 68, perception: 55 },
   { name: 'Week 3', score: 74, perception: 65 },
   { name: 'Week 4', score: 82, perception: 80 },
   { name: 'Week 5', score: 88, perception: 90 },
+];
+
+const issueData = [
+  { name: 'Missing Images', count: 42 },
+  { name: 'Vague Descriptions', count: 28 },
+  { name: 'No Reviews', count: 15 },
+  { name: 'Formatting', count: 8 },
+  { name: 'Pricing Errors', count: 2 },
 ];
 
 export default function Reports() {
@@ -27,10 +36,7 @@ export default function Reports() {
             <Calendar className="w-4 h-4 text-gray-500" />
             Last 30 Days
           </button>
-          <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm">
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          <DownloadButton />
         </div>
       </div>
 
@@ -69,44 +75,59 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">Score Progression</h2>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-indigo-600"></span> Overall Score
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-emerald-500"></span> Perception Score
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Score Progression</h2>
+            <div className="flex items-center gap-4 text-sm font-medium">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-indigo-600"></span> Overall Score
+              </div>
             </div>
           </div>
+          
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#4F46E5" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="name" stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} dy={10} />
+                <YAxis stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  itemStyle={{ color: '#111827', fontWeight: 600 }}
+                  labelStyle={{ color: '#64748b', fontWeight: 500, marginBottom: '4px' }}
+                />
+                <Area type="monotone" dataKey="score" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" name="Overall Score" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        
-        <div className="h-[400px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#4F46E5" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorPerception" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="name" stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} dy={10} />
-              <YAxis stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                itemStyle={{ color: '#111827', fontWeight: 600 }}
-                labelStyle={{ color: '#64748b', fontWeight: 500, marginBottom: '4px' }}
-              />
-              <Area type="monotone" dataKey="score" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" name="Overall Score" />
-              <Area type="monotone" dataKey="perception" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorPerception)" name="Perception Score" />
-            </AreaChart>
-          </ResponsiveContainer>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Issues by Category</h2>
+          </div>
+          
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={issueData} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="name" stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} dy={10} />
+                <YAxis stroke="#94a3b8" tick={{fill: '#64748b', fontSize: 12, fontWeight: 500}} axisLine={false} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  cursor={{ fill: '#f8fafc' }}
+                />
+                <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} name="Issues Found" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </>
