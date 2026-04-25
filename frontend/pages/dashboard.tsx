@@ -1,530 +1,296 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-
-// ---------------------------------------------------------------------------
-// Types — mirrors backend response_builder.build_response() exactly
-// ---------------------------------------------------------------------------
-
-interface Store { url: string; }
-
-interface ScoreBreakdown { completeness: number; trust: number; perception: number; }
-
-interface Score {
-  overall: number;
-  status: 'Needs Improvement' | 'Good' | 'Excellent';
-  confidence: number;
-  breakdown: ScoreBreakdown;
-}
-
-interface AffectedItem { product_id: number; title: string; }
-
-interface Issue {
-  id: string;
-  title: string;
-  impact: 'high' | 'medium' | 'low';
-  score_impact: number;
-  description: string;
-  affected_items: AffectedItem[];
-  affected_count: number;
-  status: 'open' | 'resolved';
-}
-
-interface ActionPlanItem {
-  priority: number;
-  title: string;
-  score_gain: number;
-  effort: 'low' | 'medium' | 'high';
-  guide_link: string;
-}
-
-interface Perception {
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
-  decision: 'Recommended' | 'Not Recommended';
-  query: string;
-  ai_response: string;
-  reasoning: string;
-  gaps: string[];
-  llm_status: 'active' | 'fallback';
-}
-
-interface WhatIfAction { label: string; gain: number; }
-
-interface WhatIf {
-  current_score: number;
-  potential_score: number;
-  improvement: number;
-  actions: WhatIfAction[];
-}
-
-interface Meta {
-  analysis_time: string;
-  llm_used: string;
-  fallback_used: boolean;
-  products_analyzed: number;
-  errors: string[];
-}
-
-interface AnalysisResult {
-  status: 'success' | 'partial_success' | 'failed';
-  store: Store;
-  score: Score;
-  issues: Issue[];
-  action_plan: ActionPlanItem[];
-  perception: Perception;
-  what_if: WhatIf;
-  meta: Meta;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getScoreColor(score: number): string {
-  if (score >= 80) return '#10b981';
-  if (score >= 55) return '#f59e0b';
-  return '#f43f5e';
-}
-
-function getBarGradient(score: number): string {
-  if (score >= 80) return 'linear-gradient(90deg,#10b981,#34d399)';
-  if (score >= 55) return 'linear-gradient(90deg,#f59e0b,#fbbf24)';
-  return 'linear-gradient(90deg,#f43f5e,#fb7185)';
-}
-
-const IMPACT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  high:   { bg: 'rgba(244,63,94,0.08)',  text: '#fb7185', border: 'rgba(244,63,94,0.2)'  },
-  medium: { bg: 'rgba(245,158,11,0.08)', text: '#fbbf24', border: 'rgba(245,158,11,0.2)' },
-  low:    { bg: 'rgba(59,130,246,0.08)', text: '#60a5fa', border: 'rgba(59,130,246,0.2)' },
-};
-
-const EFFORT_COLORS: Record<string, string> = {
-  low:    '#10b981',
-  medium: '#f59e0b',
-  high:   '#f43f5e',
-};
-
-const CONF_CLASS: Record<string, string> = {
-  HIGH:   'conf-high',
-  MEDIUM: 'conf-medium',
-  LOW:    'conf-low',
-};
-
-const CONF_ICON: Record<string, string> = { HIGH: '🟢', MEDIUM: '🟡', LOW: '🔴' };
-
-// ---------------------------------------------------------------------------
-// Score Ring
-// ---------------------------------------------------------------------------
-
-function ScoreRing({ score, color }: { score: number; color: string }) {
-  const r = 68;
-  const circ = 2 * Math.PI * r;
-  const [val, setVal] = useState(0);
-  useEffect(() => { const t = setTimeout(() => setVal(score), 200); return () => clearTimeout(t); }, [score]);
-  const offset = circ - (val / 100) * circ;
-
-  return (
-    <div className="score-ring-wrap">
-      <svg className="score-ring-svg" viewBox="0 0 160 160">
-        <circle className="score-ring-bg" cx="80" cy="80" r={r} />
-        <circle
-          className="score-ring-fill"
-          cx="80" cy="80" r={r}
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          style={{ stroke: color, filter: `drop-shadow(0 0 8px ${color}55)` }}
-        />
-      </svg>
-      <div className="score-number">
-        <span className="score-value" style={{ color }}>{Math.round(val)}</span>
-        <span className="score-label">/ 100</span>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Inline sub-components
-// ---------------------------------------------------------------------------
-
-function SubScoreBar({ label, weight, value }: { label: string; weight: string; value: number }) {
-  return (
-    <div className="sub-score-row">
-      <div className="sub-score-header">
-        <span className="sub-score-name">
-          {label} <span style={{ opacity: 0.45, fontSize: '0.7rem' }}>({weight})</span>
-        </span>
-        <span className="sub-score-val">{value}</span>
-      </div>
-      <div className="bar-track">
-        <div className="bar-fill" style={{ width: `${value}%`, background: getBarGradient(value) }} />
-      </div>
-    </div>
-  );
-}
-
-function ImpactBadge({ impact }: { impact: string }) {
-  const c = IMPACT_COLORS[impact] ?? IMPACT_COLORS.low;
-  return (
-    <span style={{
-      display: 'inline-block', padding: '0.15rem 0.55rem', borderRadius: '999px',
-      fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
-      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-    }}>
-      {impact}
-    </span>
-  );
-}
-
-function EffortBadge({ effort }: { effort: string }) {
-  const color = EFFORT_COLORS[effort] ?? '#94a3b8';
-  return (
-    <span style={{
-      display: 'inline-block', padding: '0.15rem 0.55rem', borderRadius: '999px',
-      fontSize: '0.7rem', fontWeight: 600, color,
-      background: `${color}18`, border: `1px solid ${color}35`,
-    }}>
-      {effort} effort
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard Page
-// ---------------------------------------------------------------------------
+import { AlertCircle, Target, CheckCircle2, AlertTriangle, MessageSquareText, RotateCw, Flame, Award } from 'lucide-react';
+import clsx from 'clsx';
+import { ScoreCard } from '../components/ScoreCard';
+import { RecommendationCard } from '../components/RecommendationCard';
+import { ProgressLoader } from '../components/ProgressLoader';
+import { runAnalysis } from '../services/api';
 
 export default function Dashboard() {
   const router = useRouter();
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // Interactive state
+  const [fixedActions, setFixedActions] = useState<number[]>([]); // indexes of fixed actions
+  const [isRerunning, setIsRerunning] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('analysisResult');
-    if (!raw) { router.replace('/'); return; }
+    if (!raw) {
+      setMounted(true);
+      return;
+    }
     try {
-      setResult(JSON.parse(raw) as AnalysisResult);
+      setResult(JSON.parse(raw));
       setMounted(true);
     } catch {
-      router.replace('/');
+      setMounted(true);
     }
-  }, [router]);
+  }, []);
 
-  if (!mounted || !result) {
+  if (!mounted) return null;
+
+  if (isRerunning) {
     return (
-      <div className="page-wrapper" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <div className="spinner" style={{ width: 32, height: 32 }} />
+      <div className="flex flex-col items-center justify-center h-[70vh]">
+        <ProgressLoader 
+          message="Re-running Analysis Pipeline" 
+          subMessage="Validating your fixes against AI agent benchmarks..."
+        />
       </div>
     );
   }
 
-  const { status, store, score, issues, action_plan, perception, what_if, meta } = result;
-  const scoreColor = getScoreColor(score.overall);
+  if (!result) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <div className="w-20 h-20 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center mb-6">
+          <Target className="w-10 h-10 text-gray-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">No Analysis Data Found</h2>
+        <p className="text-gray-500 max-w-md text-center mb-8">
+          Run a new analysis to see how AI agents perceive your store, identify completeness gaps, and get actionable recommendations.
+        </p>
+        <button 
+          onClick={() => router.push('/')}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors shadow-sm"
+        >
+          Start Store Analysis
+        </button>
+      </div>
+    );
+  }
 
-  const statusClass = status === 'success' ? 'status-success'
-    : status === 'partial_success' ? 'status-partial' : 'status-failed';
-  const statusLabel = status === 'success' ? '✅ Success'
-    : status === 'partial_success' ? '⚠️ Partial Success' : '❌ Failed';
+  const { score, perception, action_plan } = result;
+
+  // Calculate projected score
+  const currentScore = score?.overall || 0;
+  const projectedGains = fixedActions.reduce((total, index) => {
+    return total + (action_plan[index]?.score_gain || 0);
+  }, 0);
+  const projectedScore = Math.min(100, currentScore + projectedGains);
+  const totalIssues = action_plan?.length || 0;
+  const fixedCount = fixedActions.length;
+  const progressPercent = totalIssues > 0 ? (fixedCount / totalIssues) * 100 : 0;
+
+  // Extract Top Impact Actions
+  const sortedActions = [...(action_plan || [])].map((act, i) => ({ ...act, originalIndex: i })).sort((a, b) => b.score_gain - a.score_gain);
+  const topHighImpact = sortedActions.filter(a => a.effort === 'high' || a.score_gain > 5).slice(0, 3);
+  const regularActions = sortedActions.filter(a => !topHighImpact.find(hi => hi.originalIndex === a.originalIndex));
+
+  const handleToggleFix = (index: number) => {
+    if (fixedActions.includes(index)) {
+      setFixedActions(fixedActions.filter(i => i !== index));
+    } else {
+      setFixedActions([...fixedActions, index]);
+    }
+  };
+
+  const handleRerun = async () => {
+    setIsRerunning(true);
+    try {
+      const storeUrl = sessionStorage.getItem('storeUrl') || '';
+      if (!storeUrl) throw new Error("No store URL found");
+      
+      const newResult = await runAnalysis(storeUrl);
+      sessionStorage.setItem('analysisResult', JSON.stringify(newResult));
+      
+      // Reset state and show new result
+      setResult(newResult);
+      setFixedActions([]);
+      window.scrollTo(0, 0);
+    } catch (err) {
+      alert("Failed to re-run analysis. Please check your connection or try again later.");
+    } finally {
+      setIsRerunning(false);
+    }
+  };
 
   return (
     <>
       <Head>
-        <title>Analysis — {store.url} | AI Store Optimizer</title>
-        <meta name="description" content={`AI store analysis for ${store.url}`} />
+        <title>Dashboard | AI Store Optimizer</title>
       </Head>
 
-      <div className="bg-mesh" />
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Analysis Overview</h1>
+        <p className="text-gray-500 text-sm">Comprehensive breakdown of your store's AI readiness and perception metrics.</p>
+      </div>
 
-      <main className="page-wrapper">
-        <div className="dashboard container fade-in">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        {/* LEFT PANEL: Overall AI Score Card Component */}
+        <div className="lg:col-span-4">
+          <ScoreCard 
+            score={score} 
+            projectedScore={projectedScore} 
+            isProjecting={fixedActions.length > 0} 
+          />
+        </div>
 
-          {/* ── Header ── */}
-          <div className="dash-header">
+        {/* RIGHT PANEL: AI Perception Panel & Gaps */}
+        <div className="lg:col-span-8 flex flex-col gap-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex-1">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+              <h2 className="text-sm font-bold tracking-wider text-gray-500 uppercase flex items-center gap-2">
+                <MessageSquareText className="w-4 h-4 text-indigo-500" /> AI Perception Simulation
+              </h2>
+              
+              <div className="flex gap-3">
+                <div className={clsx(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border",
+                  perception?.confidence === 'HIGH' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                  perception?.confidence === 'MEDIUM' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                  "bg-rose-50 text-rose-700 border-rose-200"
+                )}>
+                  {perception?.confidence || 'LOW'} CONFIDENCE
+                </div>
+                
+                <div className={clsx(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center gap-1.5",
+                  perception?.decision === 'Recommended' 
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-rose-50 text-rose-700 border-rose-200"
+                )}>
+                  {perception?.decision === 'Recommended' ? 'RECOMMENDED' : 'NOT RECOMMENDED'}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 mb-8 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">AI Agent Verdict</h3>
+              <p className="text-gray-700 text-sm leading-relaxed font-medium">
+                {perception?.reasoning || 'The AI agent reviewed the store and found insufficient trust signals and completeness to formulate a strong recommendation.'}
+              </p>
+            </div>
+
             <div>
-              <h1 className="dash-title">Store Analysis Report</h1>
-              <p className="store-tag">🔗 {store.url}</p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
-              <button
-                id="new-analysis-btn"
-                className="btn-primary"
-                style={{ padding: '0.5rem 1.1rem', fontSize: '0.82rem' }}
-                onClick={() => router.push('/')}
-              >
-                ← New Analysis
-              </button>
-            </div>
-          </div>
-
-          {/* ── Error banner (partial_success) ── */}
-          {meta.errors.length > 0 && (
-            <div className="error-banner">
-              <p className="error-banner-title">⚠️ Some pipeline stages encountered errors</p>
-              <ul className="error-banner-list">
-                {meta.errors.map((e, i) => <li key={i}>{e}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* ── Row 1: Score + Perception ── */}
-          <div className="grid-2 mb">
-
-            {/* Score card */}
-            <div className="card score-card">
-              <p className="card-title">📊 Overall AI Score</p>
-
-              <ScoreRing score={score.overall} color={scoreColor} />
-
-              {/* Score status label */}
-              <span style={{
-                display: 'inline-block', marginBottom: '1.25rem',
-                padding: '0.3rem 1rem', borderRadius: '999px', fontSize: '0.78rem',
-                fontWeight: 700, background: `${scoreColor}18`,
-                color: scoreColor, border: `1px solid ${scoreColor}35`,
-              }}>
-                {score.status}
-              </span>
-
-              <div className="sub-score-list">
-                <SubScoreBar label="Completeness" weight="40%" value={score.breakdown.completeness} />
-                <SubScoreBar label="Trust"         weight="30%" value={score.breakdown.trust} />
-                <SubScoreBar label="Perception"    weight="30%" value={score.breakdown.perception} />
-              </div>
-
-              {/* Analysis confidence */}
-              <div style={{ marginTop: '1.25rem', padding: '0.6rem 0.85rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.08)', width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem', fontSize: '0.75rem' }}>
-                  <span style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Analysis Confidence</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'JetBrains Mono,monospace' }}>{score.confidence}%</span>
-                </div>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${score.confidence}%`, background: getBarGradient(score.confidence) }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Perception card */}
-            <div className="card">
-              <p className="card-title">🧠 AI Perception Simulation</p>
-
-              <span className={`confidence-badge ${CONF_CLASS[perception.confidence] ?? 'conf-low'}`}>
-                {CONF_ICON[perception.confidence]} {perception.confidence} Confidence
-              </span>
-
-              {/* Decision badge */}
-              <div style={{ marginBottom: '1rem' }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                  padding: '0.35rem 0.9rem', borderRadius: '999px', fontSize: '0.8rem',
-                  fontWeight: 700, border: '1px solid',
-                  ...(perception.decision === 'Recommended'
-                    ? { background: 'rgba(16,185,129,0.1)', color: '#34d399', borderColor: 'rgba(16,185,129,0.3)' }
-                    : { background: 'rgba(244,63,94,0.1)',  color: '#fb7185', borderColor: 'rgba(244,63,94,0.3)'  }),
-                }}>
-                  {perception.decision === 'Recommended' ? '✅' : '❌'} {perception.decision}
-                </span>
-              </div>
-
-              {/* LLM status chip */}
-              <div style={{ marginBottom: '0.85rem' }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                  padding: '0.2rem 0.65rem', borderRadius: '999px', fontSize: '0.72rem',
-                  fontWeight: 600,
-                  ...(perception.llm_status === 'active'
-                    ? { background: 'rgba(99,102,241,0.1)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.25)' }
-                    : { background: 'rgba(245,158,11,0.1)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }),
-                }}>
-                  ⚡ LLM {perception.llm_status}
-                </span>
-              </div>
-
-              <p className="card-heading">AI Buyer Verdict</p>
-              <p className="card-body">{perception.reasoning || 'No reasoning available.'}</p>
-
-              {perception.gaps.length > 0 && (
-                <>
-                  <p style={{ fontSize: '0.73rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginTop: '1rem', marginBottom: '0.5rem' }}>
-                    Perception Gaps
-                  </p>
-                  <div className="tag-list">
-                    {perception.gaps.map((g, i) => (
-                      <span key={i} className="tag tag-rose">⚠ {g}</span>
-                    ))}
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500" /> Perception Gaps
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {perception?.gaps?.map((gap: string, i: number) => (
+                  <div key={i} className="bg-white border border-slate-200 rounded-lg p-4 flex items-start gap-3 hover:border-amber-200 transition-colors shadow-sm">
+                    <div className="bg-amber-50 rounded-md p-1.5 flex-shrink-0 mt-0.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 mb-1">Context Missing</h4>
+                      <p className="text-xs text-gray-600 leading-snug">{gap}</p>
+                    </div>
                   </div>
-                </>
-              )}
-
-              <p style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '1rem', lineHeight: 1.6, borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.2rem' }}>Simulated Query</span>
-                {perception.query}
-              </p>
+                ))}
+                {(!perception?.gaps || perception.gaps.length === 0) && (
+                  <div className="text-sm text-gray-500 italic flex items-center gap-2 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" /> No significant perception gaps identified.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* ── What-If Banner ── */}
-          {what_if.improvement > 0 && (
-            <div className="whatif-card mb">
-              <div>
-                <p className="card-title" style={{ marginBottom: '0.4rem' }}>✨ What-If Simulation</p>
-                <p className="whatif-improvement">+{what_if.improvement} points potential</p>
-              </div>
-
-              <div className="whatif-arrow">
-                <div className="whatif-score">
-                  <span className="whatif-num" style={{ color: getScoreColor(what_if.current_score) }}>
-                    {Math.round(what_if.current_score)}
-                  </span>
-                  <span className="whatif-lbl">Current</span>
-                </div>
-                <span className="arrow-icon">→</span>
-                <div className="whatif-score">
-                  <span className="whatif-num" style={{ color: '#10b981' }}>
-                    {Math.round(what_if.potential_score)}
-                  </span>
-                  <span className="whatif-lbl">Potential</span>
-                </div>
-              </div>
-
-              {/* Per-action gains */}
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <p style={{ fontSize: '0.73rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                  Top actions
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  {what_if.actions.slice(0, 4).map((a, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{a.label}</span>
-                      <span style={{ color: '#10b981', fontWeight: 700, fontFamily: 'JetBrains Mono,monospace', marginLeft: '0.75rem', flexShrink: 0 }}>+{a.gain}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Row 2: Issues + Action Plan ── */}
-          <div className="grid-2 mb">
-
-            {/* Issues */}
-            <div className="card">
-              <p className="card-title">
-                🔍 Completeness Issues
-                <span style={{ marginLeft: 'auto', background: 'rgba(244,63,94,0.12)', color: '#fb7185', padding: '0.15rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 800 }}>
-                  {issues.length} types
-                </span>
-              </p>
-
-              {issues.length === 0 ? (
-                <p className="empty-state">🎉 No issues found — all products look great!</p>
-              ) : (
-                <div className="issue-list">
-                  {issues.slice(0, 6).map((issue) => (
-                    <div key={issue.id} className="issue-row">
-                      <span className="issue-icon">⚠️</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                          <p className="issue-type">{issue.title}</p>
-                          <ImpactBadge impact={issue.impact} />
-                          <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace', flexShrink: 0 }}>
-                            -{issue.score_impact}pts
-                          </span>
-                        </div>
-                        <p className="issue-detail">{issue.description}</p>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                          {issue.affected_count} product{issue.affected_count !== 1 ? 's' : ''} affected
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Action Plan */}
-            <div className="card">
-              <p className="card-title">
-                🎯 Action Plan
-                <span style={{ marginLeft: 'auto', background: 'rgba(99,102,241,0.12)', color: '#818cf8', padding: '0.15rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 800 }}>
-                  {action_plan.length} actions
-                </span>
-              </p>
-
-              {action_plan.length === 0 ? (
-                <p className="empty-state">✅ Nothing to fix — store looks great!</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {action_plan.slice(0, 6).map((item) => (
-                    <div key={item.priority} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-                      padding: '0.7rem 0.85rem', borderRadius: '8px',
-                      background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.1)',
-                    }}>
-                      <span style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                        background: 'rgba(99,102,241,0.15)', color: '#818cf8',
-                        fontSize: '0.72rem', fontWeight: 800,
-                      }}>
-                        {item.priority}
-                      </span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</span>
-                          <EffortBadge effort={item.effort} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <span style={{ fontSize: '0.78rem', color: '#10b981', fontWeight: 700, fontFamily: 'JetBrains Mono,monospace' }}>
-                            +{item.score_gain} pts
-                          </span>
-                          <a
-                            href={item.guide_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', textDecoration: 'none' }}
-                          >
-                            📖 Guide →
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+      {/* Progress & Fix Tracking Section */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex-1 max-w-lg">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-1">
+              <Award className="w-5 h-5 text-indigo-600" /> Improvement Progress
+            </h2>
+            <p className="text-sm text-gray-500 mb-3">
+              You have successfully marked <span className="font-bold text-gray-900">{fixedCount} out of {totalIssues}</span> issues as fixed.
+            </p>
+            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden w-full border border-slate-200">
+              <div 
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-700 ease-out" 
+                style={{ width: `${progressPercent}%` }}
+              ></div>
             </div>
           </div>
-
-          {/* ── Meta strip ── */}
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center',
-            padding: '1rem 1.25rem', borderRadius: '12px',
-            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-            marginBottom: '1.25rem',
-          }}>
-            {[
-              { icon: '⏱', label: 'Analysis Time', value: meta.analysis_time },
-              { icon: '🤖', label: 'LLM Used',      value: meta.llm_used.replace('models/', '') },
-              { icon: '📦', label: 'Products',      value: `${meta.products_analyzed} analyzed` },
-              { icon: meta.fallback_used ? '⚠️' : '✅', label: 'LLM Status', value: meta.fallback_used ? 'Fallback used' : 'Full AI' },
-            ].map((m) => (
-              <div key={m.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 1.25rem' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.2rem' }}>
-                  {m.icon} {m.label}
-                </span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono,monospace' }}>
-                  {m.value}
-                </span>
+          
+          <div className="flex flex-col items-end">
+            {fixedActions.length > 0 && (
+              <div className="animate-in fade-in slide-in-from-right-8 duration-500 mb-2">
+                <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest text-right mb-1">Projected Score After Fixes</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 font-mono text-xl line-through">{Math.round(currentScore)}</span>
+                  <span className="text-gray-400">&rarr;</span>
+                  <span className="text-3xl font-black text-indigo-600 font-mono">{Math.round(projectedScore)}</span>
+                  <span className="text-sm font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">+{Math.round(projectedScore - currentScore)}</span>
+                </div>
               </div>
+            )}
+            <button 
+              onClick={handleRerun}
+              disabled={fixedActions.length === 0}
+              className={clsx(
+                "px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm border",
+                fixedActions.length > 0 
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600" 
+                  : "bg-slate-50 text-gray-400 border-slate-200 cursor-not-allowed"
+              )}
+            >
+              <RotateCw className={clsx("w-4 h-4", fixedActions.length > 0 && "animate-spin-once")} /> 
+              Re-run Analysis Pipeline
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Priority Recommendations */}
+      {topHighImpact.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 px-2">
+            <Flame className="w-5 h-5 text-rose-500" /> High Impact Fixes
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {topHighImpact.map((action: any) => (
+              <RecommendationCard 
+                key={`hi-${action.originalIndex}`}
+                action={action}
+                currentScore={currentScore}
+                isFixed={fixedActions.includes(action.originalIndex)}
+                onToggleFix={() => handleToggleFix(action.originalIndex)}
+                onRerun={handleRerun}
+              />
             ))}
           </div>
-
-          {/* ── Footer ── */}
-          <div style={{ textAlign: 'center', padding: '0.5rem 0 1.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-            Powered by Gemini 2.5 Flash · LangGraph Pipeline · FastAPI
-          </div>
-
         </div>
-      </main>
+      )}
+
+      {/* Other Recommendations */}
+      {regularActions.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 px-2">
+            <Target className="w-5 h-5 text-indigo-600" /> Standard Recommendations
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {regularActions.map((action: any) => (
+              <RecommendationCard 
+                key={`reg-${action.originalIndex}`}
+                action={action}
+                currentScore={currentScore}
+                isFixed={fixedActions.includes(action.originalIndex)}
+                onToggleFix={() => handleToggleFix(action.originalIndex)}
+                onRerun={handleRerun}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {totalIssues === 0 && (
+        <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Perfect Score!</h3>
+          <p className="text-gray-500">All clear. You have no pending recommendations.</p>
+        </div>
+      )}
     </>
   );
 }
