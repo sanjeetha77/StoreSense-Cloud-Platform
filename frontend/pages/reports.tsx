@@ -2,8 +2,9 @@ import Head from 'next/head';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, BarChart, Bar } from 'recharts';
 import { Calendar, TrendingUp, AlertCircle, Package } from 'lucide-react';
 import { DownloadButton } from '../components/DownloadButton';
+import { useEffect, useState } from 'react';
 
-const trendData = [
+const defaultTrendData = [
   { name: 'Week 1', score: 65, perception: 50 },
   { name: 'Week 2', score: 68, perception: 55 },
   { name: 'Week 3', score: 74, perception: 65 },
@@ -11,7 +12,7 @@ const trendData = [
   { name: 'Week 5', score: 88, perception: 90 },
 ];
 
-const issueData = [
+const defaultIssueData = [
   { name: 'Missing Images', count: 42 },
   { name: 'Vague Descriptions', count: 28 },
   { name: 'No Reviews', count: 15 },
@@ -20,6 +21,46 @@ const issueData = [
 ];
 
 export default function Reports() {
+  const [trendData, setTrendData] = useState(defaultTrendData);
+  const [issueData, setIssueData] = useState(defaultIssueData);
+  const [metrics, setMetrics] = useState({ score: 88, products: 1204, issues: 42 });
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem('analysisResult');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        
+        // Dynamic Score
+        const actualScore = parsed.score?.overall || 88;
+        const totalIssues = parsed.action_plan?.length || 42;
+        
+        setMetrics({
+          score: actualScore,
+          products: 1204, // Mapped fallback
+          issues: totalIssues
+        });
+
+        // Dynamic Trend generation based on actual score
+        const newTrend = [...defaultTrendData];
+        newTrend[4] = { name: 'Current', score: actualScore, perception: parsed.score?.perception || 85 };
+        setTrendData(newTrend);
+
+        // Dynamic Issue Categories
+        if (parsed.action_plan && parsed.action_plan.length > 0) {
+          const categories: Record<string, number> = {};
+          parsed.action_plan.forEach((a: any) => {
+            const cat = a.effort === 'high' ? 'Critical' : a.effort === 'medium' ? 'Content' : 'Minor';
+            categories[cat] = (categories[cat] || 0) + 1;
+          });
+          const newIssueData = Object.keys(categories).map(k => ({ name: k, count: categories[k] }));
+          if (newIssueData.length > 0) {
+            setIssueData(newIssueData);
+          }
+        }
+      } catch (e) {}
+    }
+  }, []);
   return (
     <>
       <Head>
@@ -47,7 +88,7 @@ export default function Reports() {
             <TrendingUp className="w-5 h-5 text-emerald-500" />
           </div>
           <div className="flex items-end gap-3">
-            <span className="text-4xl font-black text-gray-900">88</span>
+            <span className="text-4xl font-black text-gray-900">{Math.round(metrics.score)}</span>
             <span className="text-sm text-emerald-600 font-bold flex items-center mb-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">+6.0%</span>
           </div>
         </div>
@@ -58,7 +99,7 @@ export default function Reports() {
             <Package className="w-5 h-5 text-indigo-500" />
           </div>
           <div className="flex items-end gap-3">
-            <span className="text-4xl font-black text-gray-900">1,204</span>
+            <span className="text-4xl font-black text-gray-900">{metrics.products.toLocaleString()}</span>
             <span className="text-sm text-gray-500 font-medium mb-1">Total catalog</span>
           </div>
         </div>
@@ -69,8 +110,8 @@ export default function Reports() {
             <AlertCircle className="w-5 h-5 text-amber-500" />
           </div>
           <div className="flex items-end gap-3">
-            <span className="text-4xl font-black text-emerald-600">42</span>
-            <span className="text-sm text-gray-500 font-medium mb-1">This month</span>
+            <span className="text-4xl font-black text-emerald-600">{metrics.issues}</span>
+            <span className="text-sm text-gray-500 font-medium mb-1">Total detected</span>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
-import { Bell, Plus, RefreshCw, Clock } from 'lucide-react';
+import { Bell, Plus, RefreshCw, Clock, LogOut, Settings as SettingsIcon, User, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import clsx from 'clsx';
 import { runAnalysis } from '../services/api';
 
@@ -9,8 +9,13 @@ export function TopNavbar() {
   const router = useRouter();
   const [storeUrl, setStoreUrl] = useState('ai-store-test-2.myshopify.com');
   const [status, setStatus] = useState<'Success' | 'Running' | 'Error' | null>('Success');
-  const [lastAnalyzed, setLastAnalyzed] = useState<string>('Just now');
+  const [lastAnalyzedTime, setLastAnalyzedTime] = useState<number>(Date.now());
+  const [relativeTime, setRelativeTime] = useState<string>('Just now');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Dropdown state
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const url = sessionStorage.getItem('storeUrl');
@@ -27,7 +32,31 @@ export function TopNavbar() {
       } catch (e) {}
     }
     
-    setLastAnalyzed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    setLastAnalyzedTime(Date.now());
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const diffInSeconds = Math.floor((Date.now() - lastAnalyzedTime) / 1000);
+      if (diffInSeconds < 60) {
+        setRelativeTime('Just now');
+      } else if (diffInSeconds < 3600) {
+        setRelativeTime(`${Math.floor(diffInSeconds / 60)} mins ago`);
+      } else {
+        setRelativeTime(`${Math.floor(diffInSeconds / 3600)} hours ago`);
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [lastAnalyzedTime]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleRefresh = async () => {
@@ -37,9 +66,9 @@ export function TopNavbar() {
       const newResult = await runAnalysis(storeUrl);
       sessionStorage.setItem('analysisResult', JSON.stringify(newResult));
       setStatus('Success');
-      setLastAnalyzed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setLastAnalyzedTime(Date.now());
+      setRelativeTime('Just now');
       window.dispatchEvent(new Event('storage')); // Trigger update across tabs if needed
-      // To strictly reload the current page state:
       if (router.pathname === '/dashboard') router.reload();
     } catch {
       setStatus('Error');
@@ -49,7 +78,7 @@ export function TopNavbar() {
   };
 
   return (
-    <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
+    <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm transition-all">
       <div className="flex items-center gap-4">
         <div className="px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 flex items-center gap-2 shadow-inner">
           <span className={clsx(
@@ -70,7 +99,7 @@ export function TopNavbar() {
         )}
         
         <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-gray-500 ml-2">
-          <Clock className="w-3.5 h-3.5" /> Last analyzed: {lastAnalyzed}
+          <Clock className="w-3.5 h-3.5" /> Last analyzed: {relativeTime}
         </div>
       </div>
 
@@ -95,7 +124,35 @@ export function TopNavbar() {
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
         </button>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-white shadow-sm ring-1 ring-slate-200"></div>
+        
+        {/* Profile Dropdown */}
+        <div className="relative" ref={profileRef}>
+          <button 
+            onClick={() => setIsProfileOpen(!isProfileOpen)}
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-white shadow-sm ring-1 ring-slate-200 hover:ring-indigo-300 transition-all flex items-center justify-center cursor-pointer"
+          >
+             <span className="text-xs text-white font-bold tracking-wider">JD</span>
+          </button>
+          
+          {isProfileOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
+              <div className="px-4 py-2 border-b border-slate-100 mb-1">
+                <p className="text-sm font-bold text-gray-900">John Doe</p>
+                <p className="text-xs text-gray-500 font-mono truncate">{storeUrl}</p>
+              </div>
+              <button onClick={() => router.push('/settings')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                <SettingsIcon className="w-4 h-4 text-gray-400" /> Settings
+              </button>
+              <button onClick={() => window.open(`https://${storeUrl}/admin`, "_blank")} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                <ExternalLink className="w-4 h-4 text-gray-400" /> Shopify Admin
+              </button>
+              <div className="border-t border-slate-100 my-1"></div>
+              <button className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors">
+                <LogOut className="w-4 h-4" /> Logout
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

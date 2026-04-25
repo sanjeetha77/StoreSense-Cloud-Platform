@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import { Search, ChevronRight, Package, AlertTriangle, CheckCircle2, Filter } from 'lucide-react';
+import { Search, ChevronRight, Package, AlertTriangle, CheckCircle2, Filter, ExternalLink } from 'lucide-react';
 import clsx from 'clsx';
 
 // Mock data to supplement the response
@@ -212,8 +212,15 @@ export default function Analysis() {
               )}
             </div>
             
-            <button className="mt-6 w-full bg-white hover:bg-gray-50 text-gray-900 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-200 shadow-sm">
-              View in Shopify Admin
+            <button 
+              onClick={() => {
+                const storeUrl = sessionStorage.getItem('storeUrl') || 'ai-store-test-2.myshopify.com';
+                const shopifyProductId = `PROD-${selectedProduct.id}883`; // fallback or mapped ID
+                window.open(`https://${storeUrl}/admin/products/${shopifyProductId}`, "_blank");
+              }}
+              className="mt-6 w-full bg-white hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 py-2.5 rounded-lg text-sm font-bold transition-colors border border-slate-200 shadow-sm flex items-center justify-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" /> View in Shopify Admin
             </button>
           </div>
         )}
