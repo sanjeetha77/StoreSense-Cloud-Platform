@@ -10,10 +10,16 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState('************************');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    const url = sessionStorage.getItem('storeUrl');
+    const url = localStorage.getItem('storeUrl');
     if (url) setStoreUrl(url);
+
+    const stored = localStorage.getItem('analysis_result');
+    if (stored) {
+      setData(JSON.parse(stored));
+    }
   }, []);
 
   const handleManualSync = async () => {
@@ -27,6 +33,8 @@ export default function Settings() {
       setIsSyncing(false);
     }
   };
+
+  if (!data) return <p className="p-8">No analysis data found</p>;
 
   return (
     <>
@@ -56,41 +64,19 @@ export default function Settings() {
               </span>
             </div>
             
-            <div className="space-y-5 max-w-lg">
+            <div className="space-y-5 max-w-lg mb-8">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Store URL</label>
-                <div className="flex">
-                  <input 
-                    type="text" 
-                    value={storeUrl}
-                    onChange={(e) => setStoreUrl(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-l-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm shadow-inner"
-                  />
-                  <button className="bg-white hover:bg-slate-50 text-gray-700 px-4 py-2.5 rounded-r-lg font-medium transition-colors border border-l-0 border-slate-200">
-                    Verify
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">API Access Token <span className="text-gray-400 font-normal">(Optional)</span></label>
-                <div className="relative">
-                  <Key className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="password" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm shadow-inner"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Required for deep product synchronization. Storefront read-only access is sufficient.</p>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Store: {data.store?.url || storeUrl}</p>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Score: {data.score?.overall}</p>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Products: {data.meta?.products_analyzed || data.store?.total_products}</p>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Issues: {data.issues?.length}</p>
               </div>
             </div>
 
             <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-gray-900">Last synchronized</p>
-                <p className="text-xs text-gray-500">Today at 10:42 AM</p>
+                <p className="text-xs text-gray-500">Last Updated: {new Date().toLocaleString()}</p>
               </div>
               <button 
                 onClick={handleManualSync}
@@ -144,11 +130,8 @@ export default function Settings() {
             
             <div className="space-y-5 flex-1">
               {[
-                { time: '10:42 AM', msg: 'Analysis pipeline completed successfully', status: 'success' },
-                { time: '10:41 AM', msg: 'Simulating AI perception gaps', status: 'info' },
-                { time: '10:41 AM', msg: 'Evaluating trust signals', status: 'info' },
-                { time: '10:40 AM', msg: 'Ingesting product metadata', status: 'info' },
-                { time: '10:40 AM', msg: 'Analysis requested via web UI', status: 'info' },
+                { time: new Date().toLocaleTimeString(), msg: 'Analysis pipeline completed successfully', status: 'success' },
+                { time: new Date().toLocaleTimeString(), msg: 'Simulating AI perception gaps', status: 'info' },
               ].map((log, i) => (
                 <div key={i} className="flex gap-4">
                   <div className="mt-1 flex flex-col items-center">
@@ -156,7 +139,6 @@ export default function Settings() {
                       "w-2.5 h-2.5 rounded-full ring-4",
                       log.status === 'success' ? "bg-emerald-500 ring-emerald-50" : "bg-indigo-500 ring-indigo-50"
                     )}></div>
-                    {i !== 4 && <div className="w-px h-full bg-slate-200 mt-2 mb-1"></div>}
                   </div>
                   <div>
                     <p className="text-[10px] font-bold tracking-wider uppercase text-gray-400 mb-0.5">{log.time}</p>

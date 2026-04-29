@@ -13,19 +13,34 @@ const MOCK_PRODUCTS = [
 ];
 
 export default function Analysis() {
-  const [products, setProducts] = useState(MOCK_PRODUCTS);
+  const [products, setProducts] = useState<any[]>(MOCK_PRODUCTS);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [showOnlyIssues, setShowOnlyIssues] = useState(false);
 
   useEffect(() => {
-    // Attempting to merge real issues if available
-    const raw = sessionStorage.getItem('analysisResult');
+    const raw = localStorage.getItem('analysis_result');
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        if (parsed.issues && parsed.issues.length > 0) {
-          // If we had actual product lists mapped to issues from backend, we'd process here
+        if (parsed.products && parsed.products.length > 0) {
+          // Map backend products to the frontend structure
+          const mappedProducts = parsed.products.map((p: any) => {
+            // Count how many issues this product has
+            const productIssues = parsed.issues ? parsed.issues.filter((i: any) => 
+               i.affected_items && i.affected_items.some((ai: any) => ai.product_id === p.id)
+            ).length : 0;
+            
+            return {
+              id: p.id,
+              name: p.title || 'Unknown Product',
+              score: 100 - (productIssues * 15), // Mock score based on issues
+              issues: productIssues,
+              status: productIssues === 0 ? 'good' : productIssues > 2 ? 'critical' : 'warning',
+              body_html: p.body_html
+            };
+          });
+          setProducts(mappedProducts);
         }
       } catch (e) {}
     }

@@ -25,8 +25,8 @@ export default function Home() {
 
     try {
       const data = await runAnalysis(cleaned);
-      sessionStorage.setItem('analysisResult', JSON.stringify(data));
-      sessionStorage.setItem('storeUrl', cleaned);
+      localStorage.setItem('analysis_result', JSON.stringify(data));
+      localStorage.setItem('storeUrl', cleaned);
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Is the backend running?');

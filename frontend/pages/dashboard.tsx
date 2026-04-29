@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [isRerunning, setIsRerunning] = useState(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('analysisResult');
+    const raw = localStorage.getItem('analysis_result');
     if (!raw) {
       setMounted(true);
       return;
@@ -92,11 +92,11 @@ export default function Dashboard() {
   const handleRerun = async () => {
     setIsRerunning(true);
     try {
-      const storeUrl = sessionStorage.getItem('storeUrl') || '';
+      const storeUrl = localStorage.getItem('storeUrl') || '';
       if (!storeUrl) throw new Error("No store URL found");
       
       const newResult = await runAnalysis(storeUrl);
-      sessionStorage.setItem('analysisResult', JSON.stringify(newResult));
+      localStorage.setItem('analysis_result', JSON.stringify(newResult));
       
       // Reset state and show new result
       setResult(newResult);

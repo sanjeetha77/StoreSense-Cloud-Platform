@@ -450,6 +450,8 @@ def build_response(
 
         "what_if": what_if,
 
+        "products": products,
+
         "meta": {
             "analysis_time": f"{elapsed:.2f}s",
             "llm_used": llm_model_used,
