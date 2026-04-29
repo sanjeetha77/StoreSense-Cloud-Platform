@@ -80,6 +80,5 @@ async def scoring_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     _ = agent_result("success", score)
 
     return {
-        **state,
         "score": score,
     }

@@ -91,10 +91,18 @@ def build_pipeline():
         },
     )
 
-    # --- Linear pipeline from completeness onward ---
+    # --- Linear pipeline to completeness ---
+    # completeness now precedes the parallel block
+    
+    # --- Parallel block ---
     workflow.add_edge("completeness", "trust")
-    workflow.add_edge("trust", "perception")
-    workflow.add_edge("perception", "scoring")
+    workflow.add_edge("completeness", "perception")
+
+    # --- Join block into scoring ---
+    # We must join BOTH parallel branches before proceeding to scoring
+    workflow.add_edge(["trust", "perception"], "scoring")
+
+    # --- Linear tail ---
     workflow.add_edge("scoring", "summarizer")
     workflow.add_edge("summarizer", "recommendation")
     workflow.add_edge("recommendation", END)

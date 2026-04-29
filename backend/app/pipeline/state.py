@@ -18,12 +18,13 @@ class StoreAnalysisState(TypedDict):
 
     # Stage 2 — Completeness
     issues: list             # List of {type, product_id, product_title, detail}
+    deep_analysis_products: list # Products needing deep inspection
 
     # Stage 3 — Trust
-    trust_signals: dict      # {signal_name: bool | value}
+    trust_signals: dict      # {signal_name: bool | value | dict}
 
     # Stage 4 — Perception
-    perception: dict         # {confidence: str, reasoning: str, objections: list}
+    perception: dict         # {confidence: str, confidence_reason: str, reasoning: str, objections: list}
 
     # Stage 5 — Scoring
     score: dict              # {total: float, breakdown: {...}, perception_gaps: [...]}

@@ -107,16 +107,28 @@ def _rule_based_recommendations(state: StoreAnalysisState) -> str:
 
     lines.append("\n## 🟡 Medium Priority (Fix This Week)\n")
 
-    if not trust.get("has_return_policy"):
+    if trust.get("return_policy", {}).get("status") not in ("present", "weak"):
         lines.append(
             "- **Add a Return Policy**: Stores without a return policy are flagged LOW trust "
             "by AI agents. Add a clear return policy in Shopify Settings → Policies."
         )
 
-    if not trust.get("has_shipping_policy"):
+    if trust.get("shipping_policy", {}).get("status") not in ("present", "weak"):
         lines.append(
             "- **Add a Shipping Policy**: Buyers expect shipping timelines upfront. "
             "Missing shipping information is a top objection raised by AI shopping assistants."
+        )
+
+    if trust.get("privacy_policy", {}).get("status") not in ("present", "weak"):
+        lines.append(
+            "- **Add a Privacy Policy**: A privacy policy is required by law in many regions "
+            "and signals professionalism to both buyers and AI recommendation systems."
+        )
+
+    if trust.get("terms_policy", {}).get("status") not in ("present", "weak"):
+        lines.append(
+            "- **Add Terms of Service**: Terms of service build buyer confidence and are "
+            "referenced by AI agents when assessing store credibility."
         )
 
     if "short_title" in issue_types:
@@ -170,14 +182,16 @@ def _calculate_what_if(state: StoreAnalysisState) -> dict:
     # Potential completeness → perfect
     potential_completeness = 100.0
 
-    # Potential trust → all policies and reviews enabled
+    # Potential trust → all policies "present" and reviews enabled
     boosted_trust = {
         **state.get("trust_signals", {}),
-        "has_return_policy": True,
-        "has_shipping_policy": True,
-        "has_reviews": True,
+        "return_policy":   {"status": "present"},
+        "shipping_policy": {"status": "present"},
+        "privacy_policy":  {"status": "present"},
+        "terms_policy":    {"status": "present"},
+        "has_reviews":        True,
         "consistent_pricing": True,
-        "reasonable_prices": True,
+        "reasonable_prices":  True,
     }
     potential_trust = score_trust(boosted_trust)
 
@@ -253,7 +267,6 @@ async def recommendation_agent(state: StoreAnalysisState) -> StoreAnalysisState:
         _ = agent_result("partial", {"source": "rule_based"})
 
         return {
-            **state,
             "recommendations": _rule_based_recommendations(state),
             "what_if": what_if,
             "llm_model_used": "rule-based",
@@ -264,7 +277,6 @@ async def recommendation_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     _ = agent_result("success", {"source": "llm"})
 
     return {
-        **state,
         "recommendations": llm_text.strip(),
         "what_if": what_if,
         "llm_model_used": model_used,

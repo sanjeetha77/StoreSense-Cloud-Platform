@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 # Model Priority Order
 # -----------------------------
 MODELS = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-flash-latest",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.0-flash-lite",
+
 ]
 
 MAX_RETRIES = 2

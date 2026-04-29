@@ -81,6 +81,79 @@ ISSUE_CONFIG: dict[str, dict] = {
             "by AI shopping recommendation systems."
         ),
     },
+    # ---- Policy issues (store-level, injected by trust agent) ----
+    "missing_return_policy": {
+        "title": "Missing Return & Refund Policy",
+        "impact": "high",
+        "score_impact": 20,
+        "description": (
+            "Stores without a return policy are rated LOW trust by AI recommendation agents. "
+            "Create a clear refund policy page in Shopify Settings → Policies."
+        ),
+    },
+    "weak_return_policy": {
+        "title": "Improve Return Policy Clarity",
+        "impact": "medium",
+        "score_impact": 10,
+        "description": (
+            "Your return policy page exists but lacks sufficient detail. "
+            "Expand it with clear terms — timelines, eligibility, and process steps."
+        ),
+    },
+    "missing_shipping_policy": {
+        "title": "Missing Shipping Policy",
+        "impact": "medium",
+        "score_impact": 10,
+        "description": (
+            "Buyers expect shipping timelines upfront. Missing shipping information "
+            "is a top objection raised by AI shopping assistants and reduces trust scores."
+        ),
+    },
+    "weak_shipping_policy": {
+        "title": "Improve Shipping Policy Detail",
+        "impact": "medium",
+        "score_impact": 5,
+        "description": (
+            "Your shipping policy page exists but is thin on detail. "
+            "Add estimated delivery times, carrier info, and international shipping terms."
+        ),
+    },
+    "missing_privacy_policy": {
+        "title": "Missing Privacy Policy",
+        "impact": "medium",
+        "score_impact": 10,
+        "description": (
+            "A privacy policy is legally required in many regions and signals professionalism. "
+            "AI agents use its presence as a trust indicator during store evaluation."
+        ),
+    },
+    "weak_privacy_policy": {
+        "title": "Improve Privacy Policy Coverage",
+        "impact": "medium",
+        "score_impact": 5,
+        "description": (
+            "Your privacy policy exists but is too brief. Expand it to cover data collection, "
+            "usage, cookies, third-party sharing, and user rights (GDPR/CCPA)."
+        ),
+    },
+    "missing_terms_policy": {
+        "title": "Missing Terms of Service",
+        "impact": "low",
+        "score_impact": 5,
+        "description": (
+            "Terms of service build buyer confidence and are referenced by AI agents "
+            "when assessing store credibility. Add them in Shopify Settings → Policies."
+        ),
+    },
+    "weak_terms_policy": {
+        "title": "Improve Terms of Service Detail",
+        "impact": "low",
+        "score_impact": 3,
+        "description": (
+            "Your Terms of Service page exists but lacks sufficient coverage. "
+            "Expand it to include liability, usage rules, and dispute resolution."
+        ),
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -88,25 +161,47 @@ ISSUE_CONFIG: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 EFFORT_MAP: dict[str, str] = {
-    "missing_description": "medium",
-    "missing_images": "medium",
-    "missing_tags": "low",
-    "short_title": "low",
-    "no_variants": "high",
-    "add_return_policy": "low",
-    "add_shipping_policy": "low",
-    "add_reviews": "medium",
+    # Product-level
+    "missing_description":  "medium",
+    "missing_images":       "medium",
+    "missing_tags":         "low",
+    "short_title":          "low",
+    "no_variants":          "high",
+    # Legacy trust action keys
+    "add_return_policy":    "low",
+    "add_shipping_policy":  "low",
+    "add_reviews":          "medium",
+    # Policy issue keys
+    "missing_return_policy":   "medium",
+    "weak_return_policy":      "low",
+    "missing_shipping_policy": "low",
+    "weak_shipping_policy":    "low",
+    "missing_privacy_policy":  "low",
+    "weak_privacy_policy":     "low",
+    "missing_terms_policy":    "low",
+    "weak_terms_policy":       "low",
 }
 
 GUIDE_LINKS: dict[str, str] = {
+    # Product-level
     "missing_description":  "https://help.shopify.com/en/manual/products/add-update-products",
     "missing_images":       "https://help.shopify.com/en/manual/products/product-media",
     "missing_tags":         "https://help.shopify.com/en/manual/products/organize-your-products-with-tags",
     "short_title":          "https://help.shopify.com/en/manual/products/add-update-products",
     "no_variants":          "https://help.shopify.com/en/manual/products/variants",
+    # Legacy trust action keys
     "add_return_policy":    "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
     "add_shipping_policy":  "https://help.shopify.com/en/manual/shipping/setting-up-and-managing-your-shipping",
     "add_reviews":          "https://apps.shopify.com/product-reviews",
+    # Policy issue keys
+    "missing_return_policy":   "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "weak_return_policy":      "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "missing_shipping_policy": "https://help.shopify.com/en/manual/shipping/setting-up-and-managing-your-shipping",
+    "weak_shipping_policy":    "https://help.shopify.com/en/manual/shipping/setting-up-and-managing-your-shipping",
+    "missing_privacy_policy":  "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "weak_privacy_policy":     "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "missing_terms_policy":    "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+    "weak_terms_policy":       "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
 }
 
 # ---------------------------------------------------------------------------
@@ -141,9 +236,9 @@ def _calc_confidence(state: dict, fallback_used: bool) -> float:
     base = 65.0 if fallback_used else 85.0
 
     trust = state.get("trust_signals", {})
-    if not trust.get("has_return_policy"):
+    if trust.get("return_policy", {}).get("status") not in ("present", "weak"):
         base -= 5
-    if not trust.get("has_shipping_policy"):
+    if trust.get("shipping_policy", {}).get("status") not in ("present", "weak"):
         base -= 5
     if not trust.get("has_reviews"):
         base -= 3
@@ -218,59 +313,46 @@ def _build_issues(state: dict) -> list[dict]:
 def _build_action_plan(state: dict, issues_structured: list[dict]) -> list[dict]:
     """
     Generate a structured, prioritized action plan from:
-      - Detected completeness issues (each issue type → one action)
-      - Missing trust signals (return policy, shipping, reviews)
+      - Detected issues (product-level completeness + store-level policy issues)
+      - Missing trust signals not already covered by policy issues (reviews)
 
+    Policy fixes come through issues_structured (injected by trust agent).
     Sorted by score_gain descending. Priority number assigned after sorting.
     """
     actions: list[dict] = []
     seen: set = set()
 
-    # Actions from detected issues
+    # Track which policy issue types are already in issues
+    issue_ids_in_plan = {issue["id"] for issue in issues_structured}
+
+    # Actions from all detected issues (product-level + policy-level)
     for issue in issues_structured:
         itype = issue["id"]
         if itype in seen:
             continue
         seen.add(itype)
         actions.append({
-            "_type": itype,
-            "title": f"Fix: {issue['title']}",
+            "_type":      itype,
+            "title":      f"Fix: {issue['title']}",
+            "description": issue.get("description", ""),
             "score_gain": issue["score_impact"],
-            "effort": EFFORT_MAP.get(itype, "medium"),
+            "effort":     EFFORT_MAP.get(itype, "medium"),
             "guide_link": GUIDE_LINKS.get(itype, "https://help.shopify.com"),
         })
 
-    # Actions from missing trust signals
+    # Reviews action — not covered by any issue type
     trust = state.get("trust_signals", {})
-
-    if not trust.get("has_return_policy"):
+    if not trust.get("has_reviews") and "add_reviews" not in seen:
         actions.append({
-            "_type": "add_return_policy",
-            "title": "Add a Return Policy",
-            "score_gain": 9,
-            "effort": EFFORT_MAP["add_return_policy"],
-            "guide_link": GUIDE_LINKS["add_return_policy"],
-        })
-
-    if not trust.get("has_shipping_policy"):
-        actions.append({
-            "_type": "add_shipping_policy",
-            "title": "Add a Shipping Policy",
-            "score_gain": 6,
-            "effort": EFFORT_MAP["add_shipping_policy"],
-            "guide_link": GUIDE_LINKS["add_shipping_policy"],
-        })
-
-    if not trust.get("has_reviews"):
-        actions.append({
-            "_type": "add_reviews",
-            "title": "Enable Product Reviews",
+            "_type":      "add_reviews",
+            "title":      "Enable Product Reviews",
+            "description": "Social proof is a top trust signal for AI agents. Install a reviews app and collect reviews from existing customers.",
             "score_gain": 5,
-            "effort": EFFORT_MAP["add_reviews"],
+            "effort":     EFFORT_MAP["add_reviews"],
             "guide_link": GUIDE_LINKS["add_reviews"],
         })
 
-    # Sort by score_gain, assign priority, strip internal _type
+    # Sort by score_gain, assign priority, strip internal _type key
     actions.sort(key=lambda x: -x["score_gain"])
     for i, action in enumerate(actions, 1):
         action["priority"] = i
@@ -304,6 +386,7 @@ def _build_perception(state: dict, fallback_used: bool) -> dict:
 
     return {
         "confidence": confidence,
+        "confidence_reason": raw.get("confidence_reason", ""),
         "decision": "Recommended" if confidence == "HIGH" else "Not Recommended",
         "query": SIMULATED_BUYER_QUERY,
         "ai_response": reasoning,
@@ -323,22 +406,24 @@ def _build_what_if(state: dict) -> dict:
 
     Uses the existing what_if data from the recommendation agent for totals,
     then builds the per-action breakdown from issue + trust signal data.
+    Policy gains are derived from issue_types so there are no duplicates.
     """
     existing = state.get("what_if", {})
-    current = round(existing.get("current_score", state.get("score", {}).get("total", 0)), 1)
+    current   = round(existing.get("current_score",  state.get("score", {}).get("total", 0)), 1)
     potential = round(existing.get("potential_score", current), 1)
     improvement = round(existing.get("improvement", 0), 1)
 
     trust = state.get("trust_signals", {})
     issues = state.get("issues", [])
     issue_types = {i.get("type") for i in issues}
-    issue_counts = {}
+    issue_counts: dict[str, int] = {}
     for i in issues:
         issue_counts[i["type"]] = issue_counts.get(i["type"], 0) + 1
 
-    # Build per-action gain list (top 6, sorted by gain)
+    # Build per-action gain list (top 8, sorted by gain)
     actions: list[dict] = []
 
+    # Product-level issues
     if "missing_description" in issue_types:
         n = issue_counts["missing_description"]
         actions.append({"label": f"Add descriptions to {n} product(s)", "gain": 12})
@@ -347,15 +432,30 @@ def _build_what_if(state: dict) -> dict:
         n = issue_counts["missing_images"]
         actions.append({"label": f"Upload images for {n} product(s)", "gain": 10})
 
-    if not trust.get("has_return_policy"):
-        actions.append({"label": "Add Return Policy", "gain": 9})
+    # Policy issues — use detected issue_types so no duplicates with trust signals
+    if "missing_return_policy" in issue_types:
+        actions.append({"label": "Add Return & Refund Policy", "gain": 20})
+    elif "weak_return_policy" in issue_types:
+        actions.append({"label": "Improve Return Policy Clarity", "gain": 10})
+
+    if "missing_shipping_policy" in issue_types:
+        actions.append({"label": "Add Shipping Policy", "gain": 10})
+    elif "weak_shipping_policy" in issue_types:
+        actions.append({"label": "Improve Shipping Policy Detail", "gain": 5})
+
+    if "missing_privacy_policy" in issue_types:
+        actions.append({"label": "Add Privacy Policy", "gain": 10})
+    elif "weak_privacy_policy" in issue_types:
+        actions.append({"label": "Improve Privacy Policy Coverage", "gain": 5})
+
+    if "missing_terms_policy" in issue_types:
+        actions.append({"label": "Add Terms of Service", "gain": 5})
+    elif "weak_terms_policy" in issue_types:
+        actions.append({"label": "Improve Terms of Service Detail", "gain": 3})
 
     if "missing_tags" in issue_types:
         n = issue_counts["missing_tags"]
         actions.append({"label": f"Tag {n} untagged product(s)", "gain": 7})
-
-    if not trust.get("has_shipping_policy"):
-        actions.append({"label": "Add Shipping Policy", "gain": 6})
 
     if not trust.get("has_reviews"):
         actions.append({"label": "Enable Product Reviews", "gain": 5})
@@ -371,10 +471,10 @@ def _build_what_if(state: dict) -> dict:
     actions.sort(key=lambda x: -x["gain"])
 
     return {
-        "current_score": current,
+        "current_score":   current,
         "potential_score": potential,
-        "improvement": improvement,
-        "actions": actions[:6],
+        "improvement":     improvement,
+        "actions":         actions[:8],
     }
 
 
@@ -443,6 +543,10 @@ def build_response(
         },
 
         "issues": issues_structured,
+
+        "deep_analysis": state.get("deep_analysis_products", []),
+
+        "trust_signals": state.get("trust_signals", {}),
 
         "action_plan": action_plan,
 

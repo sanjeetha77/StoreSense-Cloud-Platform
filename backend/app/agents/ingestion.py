@@ -36,7 +36,6 @@ async def ingest_agent(state: StoreAnalysisState) -> StoreAnalysisState:
         _ = agent_result("success", {"product_count": len(normalized)})
 
         return {
-            **state,
             "products": normalized,
             "status": "success",
         }
@@ -47,7 +46,6 @@ async def ingest_agent(state: StoreAnalysisState) -> StoreAnalysisState:
         _ = agent_result("failed", {"message": str(exc)})
 
         return {
-            **state,
             "products": [],
             "errors": state.get("errors", []) + [err],
             "status": "partial_success",

@@ -80,12 +80,15 @@ def _check_product(product: dict) -> list:
     return issues
 
 
-async def completeness_agent(state: StoreAnalysisState) -> StoreAnalysisState:
+from app.utils.deep_analysis import get_products_for_deep_analysis
+
+async def completeness_agent(state: StoreAnalysisState) -> dict:
     """
     Stage 2: Completeness Analyzer
 
     Checks every product for missing or thin data fields.
     Populates state["issues"] with a flat list of issue objects.
+    Also computes products needing deep analysis.
     """
     products = state.get("products", [])
     logger.info(f"[Completeness] Analyzing {len(products)} products")
@@ -94,10 +97,12 @@ async def completeness_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     for product in products:
         all_issues.extend(_check_product(product))
 
+    deep_analysis_products = get_products_for_deep_analysis(products)
+
     logger.info(f"[Completeness] ✅ Found {len(all_issues)} issues across {len(products)} products")
     _ = agent_result("success", {"issue_count": len(all_issues)})
 
     return {
-        **state,
         "issues": all_issues,
+        "deep_analysis_products": deep_analysis_products,
     }

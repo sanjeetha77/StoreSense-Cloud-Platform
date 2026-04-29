@@ -94,6 +94,5 @@ async def summarizer_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     _ = agent_result("success", {"char_count": len(summary)})
 
     return {
-        **state,
         "summary": summary,
     }

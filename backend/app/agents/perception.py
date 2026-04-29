@@ -187,6 +187,7 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
 
         fallback = {
             "confidence": "LOW",
+            "confidence_reason": "AI perception analysis could not be completed because the LLM service is unavailable.",
             "reasoning": (
                 "AI perception analysis could not be completed because the LLM service "
                 "is unavailable. Score is based on completeness and trust signals only."
@@ -195,12 +196,12 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
         }
 
         return {
-            **state,
             "perception": fallback,
             "errors": state.get("errors", []) + [err],
         }
 
     perception = _parse_llm_output(llm_text)
+    perception["confidence_reason"] = perception.get("reasoning", "")
 
     logger.info(
         f"[Perception] ✅ Confidence: {perception['confidence']} | "
@@ -209,6 +210,5 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     _ = agent_result("success", perception)
 
     return {
-        **state,
         "perception": perception,
     }
