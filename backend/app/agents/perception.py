@@ -35,12 +35,16 @@ logger = logging.getLogger(__name__)
 # Prompt
 # ---------------------------------------------------------------------------
 
+DEFAULT_QUERY = (
+    "I'm looking to buy products from this store. Can I trust it? Are the products "
+    "well-described and professionally presented? What concerns would I have as a buyer?"
+)
+
 PERCEPTION_PROMPT = """\
 You are an AI shopping assistant helping a user evaluate a Shopify store before making a purchase.
 
 === SIMULATED USER QUERY ===
-"I'm looking to buy products from this store. Can I trust it? Are the products \
-well-described and professionally presented? What concerns would I have as a buyer?"
+"{user_query}"
 
 === STORE INFORMATION ===
 {store_brief}
@@ -170,9 +174,12 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     Outputs confidence, reasoning, and objections (perception gaps).
     """
     logger.info("[Perception] Running AI perception simulation")
-
+    
+    # Check if a custom query was passed in the state
+    user_query = state.get("custom_query") or DEFAULT_QUERY
+    
     store_brief = _build_store_brief(state)
-    prompt = PERCEPTION_PROMPT.format(store_brief=store_brief)
+    prompt = PERCEPTION_PROMPT.format(user_query=user_query, store_brief=store_brief)
 
     llm_result = call_llm(prompt)
 
@@ -202,6 +209,7 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
 
     perception = _parse_llm_output(llm_text)
     perception["confidence_reason"] = perception.get("reasoning", "")
+    perception["query"] = user_query
 
     logger.info(
         f"[Perception] ✅ Confidence: {perception['confidence']} | "
@@ -212,3 +220,40 @@ async def perception_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     return {
         "perception": perception,
     }
+
+
+async def run_perception_simulation(state: StoreAnalysisState, query: str) -> dict:
+    """
+    Standalone runner for a specific AI perception simulation query.
+    Used by the /api/simulate endpoint.
+    """
+    logger.info(f"[Perception] Running standalone simulation for query: {query}")
+    
+    store_brief = _build_store_brief(state)
+    prompt = PERCEPTION_PROMPT.format(user_query=query, store_brief=store_brief)
+    
+    llm_result = call_llm(prompt)
+    llm_text = llm_result.get("text", "")
+    
+    if llm_result.get("status") == "fallback":
+        return {
+            "confidence": "LOW",
+            "reasoning": "Simulation unavailable. LLM service is currently offline.",
+            "objections": ["LLM Service Unavailable"],
+            "query": query
+        }
+        
+    result = _parse_llm_output(llm_text)
+    
+    # Map to frontend structure (sync with response_builder.py logic)
+    mapped_result = {
+        "confidence": result.get("confidence", "LOW"),
+        "confidence_reason": result.get("reasoning", ""),
+        "decision": "Recommended" if result.get("confidence") == "HIGH" else "Not Recommended",
+        "ai_response": result.get("reasoning", ""),
+        "reasoning": result.get("reasoning", ""),
+        "gaps": result.get("objections", []),
+        "query": query,
+        "llm_status": "active"
+    }
+    return mapped_result

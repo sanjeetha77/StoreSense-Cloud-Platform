@@ -2,45 +2,44 @@ import { X, Activity, Terminal } from 'lucide-react';
 import clsx from 'clsx';
 import { useEffect, useState, useRef } from 'react';
 
-const LOG_MESSAGES = [
-  "Initializing analysis pipeline engine...",
-  "Fetching store metadata and configuration...",
-  "Ingesting product catalog data (Batch 1/1)...",
-  "Evaluating trust signals and social proof...",
-  "Simulating AI perception and contextual gaps...",
-  "Cross-referencing representation against agent benchmarks...",
-  "Generating actionable recommendations...",
-  "Analysis pipeline completed successfully."
-];
+interface LogEntry {
+  id: number;
+  level: string;
+  message: string;
+  timestamp: string;
+}
 
 export function LogsModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
-  const [logs, setLogs] = useState<{time: string, msg: string, status: string}[]>([]);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/logs");
+      if (!res.ok) throw new Error("Failed to fetch logs");
+      const data = await res.json();
+      
+      // Sort logs by latest first as requested
+      const sortedLogs = data.sort((a: LogEntry, b: LogEntry) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      
+      setLogs(sortedLogs);
+    } catch (error) {
+      console.error("Error fetching logs:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
-      setLogs([]);
-      setIsSimulating(true);
+      setIsLoading(true);
+      fetchLogs();
       
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index < LOG_MESSAGES.length) {
-          const msg = LOG_MESSAGES[index];
-          const isLast = index === LOG_MESSAGES.length - 1;
-          
-          setLogs(prev => [...prev, {
-            time: new Date().toLocaleTimeString(),
-            msg: msg,
-            status: isLast ? 'success' : 'info'
-          }]);
-          index++;
-        } else {
-          setIsSimulating(false);
-          clearInterval(interval);
-        }
-      }, 1200); // 1.2s delay between logs
-
+      // Polling for real-time updates (Optional Advanced Step 6)
+      const interval = setInterval(fetchLogs, 3000);
       return () => clearInterval(interval);
     }
   }, [isOpen]);
@@ -58,52 +57,47 @@ export function LogsModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =>
       <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-            <Terminal className="w-4 h-4 text-indigo-500" /> System Logs {isSimulating && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse ml-1" />}
+            <Terminal className="w-4 h-4 text-indigo-500" /> System Logs {isLoading && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse ml-1" />}
           </h2>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-slate-200 rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <div ref={scrollRef} className="p-6 overflow-y-auto flex-1 font-mono text-sm bg-slate-900 text-slate-300 scroll-smooth">
+        <div ref={scrollRef} className="p-6 overflow-y-auto flex-1 font-mono text-sm bg-slate-900 text-slate-300 scroll-smooth max-h-[400px]">
           <div className="space-y-3">
-            {logs.length === 0 && (
-              <div className="flex gap-4 animate-pulse">
-                <span className="text-slate-500 flex-shrink-0 w-24">[{new Date().toLocaleTimeString()}]</span>
-                <span className="text-indigo-400">Connecting to analysis server...</span>
-              </div>
+            {logs.length === 0 && !isLoading && (
+              <div className="text-slate-500 italic">No logs found.</div>
             )}
             
-            {logs.map((log, i) => (
-              <div key={i} className="flex gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-                <span className="text-slate-500 flex-shrink-0 w-24">[{log.time}]</span>
+            {logs.map((log) => (
+              <div key={log.id} className="flex gap-4 border-b border-slate-800/50 pb-2 last:border-0">
+                <span className="text-slate-500 flex-shrink-0 w-32">
+                  [{new Date(log.timestamp).toLocaleTimeString()}]
+                </span>
                 <span className={clsx(
-                  log.status === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'
+                  "font-bold uppercase text-[10px] w-12",
+                  log.level === 'error' ? 'text-rose-400' : 
+                  log.level === 'success' ? 'text-emerald-400' : 
+                  'text-sky-400'
                 )}>
-                  {log.msg}
+                  {log.level}
+                </span>
+                <span className="text-slate-300 flex-1">
+                  {log.message}
                 </span>
               </div>
             ))}
-            
-            {isSimulating && logs.length > 0 && (
-              <div className="flex gap-4 animate-pulse">
-                <span className="text-slate-500 flex-shrink-0 w-24">[{new Date().toLocaleTimeString()}]</span>
-                <span className="text-amber-400 flex items-center gap-2">Processing<span className="flex gap-0.5"><span className="animate-bounce">.</span><span className="animate-bounce delay-75">.</span><span className="animate-bounce delay-150">.</span></span></span>
-              </div>
-            )}
           </div>
         </div>
         
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+          <p className="text-xs text-gray-500 italic">Polling for updates every 3s...</p>
           <button 
             onClick={onClose} 
-            className={clsx(
-              "px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm border",
-              isSimulating ? "bg-slate-100 text-gray-400 border-slate-200 cursor-not-allowed" : "bg-white hover:bg-slate-50 text-gray-700 border-slate-200"
-            )}
-            disabled={isSimulating}
+            className="px-4 py-2 rounded-lg font-medium shadow-sm transition-colors text-sm border bg-white hover:bg-slate-50 text-gray-700 border-slate-200"
           >
-            {isSimulating ? 'Running...' : 'Close'}
+            Close
           </button>
         </div>
       </div>

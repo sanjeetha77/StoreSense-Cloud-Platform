@@ -130,8 +130,8 @@ export default function Settings() {
             
             <div className="space-y-5 flex-1">
               {[
-                { time: new Date().toLocaleTimeString(), msg: 'Analysis pipeline completed successfully', status: 'success' },
-                { time: new Date().toLocaleTimeString(), msg: 'Simulating AI perception gaps', status: 'info' },
+                { time: '12:35:10 PM', msg: 'Analysis pipeline completed successfully', status: 'success' },
+                { time: '12:35:08 PM', msg: 'Simulating AI perception gaps', status: 'info' },
               ].map((log, i) => (
                 <div key={i} className="flex gap-4">
                   <div className="mt-1 flex flex-col items-center">

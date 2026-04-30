@@ -356,7 +356,7 @@ def _build_action_plan(state: dict, issues_structured: list[dict]) -> list[dict]
     actions.sort(key=lambda x: -x["score_gain"])
     for i, action in enumerate(actions, 1):
         action["priority"] = i
-        action.pop("_type", None)
+        action["id"] = action.pop("_type", None)
 
     return actions
 
