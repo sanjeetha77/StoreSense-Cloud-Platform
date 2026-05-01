@@ -20,7 +20,12 @@ import logging
 from app.pipeline.state import StoreAnalysisState
 from app.services.llm import call_llm
 from app.utils.error_handler import make_error, agent_result
-from app.utils.scoring_rules import score_trust, score_perception, SCORE_WEIGHTS
+from app.utils.scoring_rules import (
+    score_trust,
+    score_perception,
+    calculate_total_score,
+    SCORE_WEIGHTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +207,7 @@ def _calculate_what_if(state: StoreAnalysisState) -> dict:
     potential_perception = score_perception({"confidence": boosted_confidence, "objections": []})
 
     # Weighted potential total
-    potential_total = round(
-        potential_completeness * SCORE_WEIGHTS["completeness"]
-        + potential_trust * SCORE_WEIGHTS["trust"]
-        + potential_perception * SCORE_WEIGHTS["perception"],
-        1,
-    )
+    potential_total = calculate_total_score(potential_completeness, potential_trust, potential_perception)
 
     improvement = round(potential_total - current_total, 1)
 

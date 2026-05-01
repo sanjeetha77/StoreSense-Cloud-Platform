@@ -60,15 +60,26 @@ TRUST_WEIGHTS: dict[str, int] = {
 }
 
 # ---------------------------------------------------------------------------
-# Perception — confidence → base score mapping
+# Perception — graded confidence base scores
 # ---------------------------------------------------------------------------
+# Deliberately NOT 100/50/0: perception reflects AI _understanding_, not perfection.
+# A HIGH-confidence LLM response starts at 90 (not 100) because there is always
+# some irreducible uncertainty in AI perception.
 PERCEPTION_CONFIDENCE_MAP: dict[str, float] = {
-    "HIGH": 100.0,
-    "MEDIUM": 70.0,
-    "LOW": 40.0,
+    "HIGH":   90.0,
+    "MEDIUM": 65.0,
+    "LOW":    45.0,
 }
-OBJECTION_PENALTY: float = 8.0      # Points deducted per objection
-MAX_OBJECTION_PENALTY: float = 40.0  # Cap so score never hits 0 from objections alone
+
+# Graduated objection penalties — early objections cost less than later ones.
+# This reflects that the first concern from an AI buyer is significant,
+# but additional objections from the same session are incremental.
+OBJECTION_PENALTIES: list[float] = [8.0, 7.0, 6.0, 5.0, 4.0]  # per-position cost
+MAX_OBJECTION_PENALTY: float = 30.0   # hard cap — objections alone cannot destroy score
+
+# Minimum perception score — even badly incomplete stores have some baseline.
+# 30 represents "we found the store, products exist, but quality is poor".
+MIN_PERCEPTION_SCORE: float = 30.0
 
 # ---------------------------------------------------------------------------
 # Overall scoring weights
@@ -144,17 +155,47 @@ def score_trust(trust_signals: dict) -> float:
 
 def score_perception(perception: dict) -> float:
     """
-    Calculate a perception score in [10, 100].
+    Calculate a perception score in [MIN_PERCEPTION_SCORE, 100].
 
-    Base score comes from confidence level.
-    Each objection the LLM raised deducts OBJECTION_PENALTY points.
-    Total objection deduction is capped at MAX_OBJECTION_PENALTY.
+    Scoring approach:
+      1. Start from a confidence-level base (HIGH=90, MEDIUM=65, LOW=45).
+      2. Deduct graduated penalties for each objection the LLM raised.
+         The first objection costs most; subsequent ones taper off.
+         This avoids the "5 objections → score collapses" problem.
+      3. Apply a hard floor of MIN_PERCEPTION_SCORE (30) so minor-issue
+         stores never show an absurdly low AI perception score.
+
+    Severity guidance (approximate outputs):
+      Perfect store  (HIGH, 0 objections) → ~90
+      Minor issues   (MEDIUM, 1-2 obj)    → ~50–65
+      Moderate issues(MEDIUM, 3-4 obj)    → ~40–50
+      Major issues   (LOW, 4-5 obj)       → ~30–40
     """
     confidence = perception.get("confidence", "LOW").upper()
     base = PERCEPTION_CONFIDENCE_MAP.get(confidence, PERCEPTION_CONFIDENCE_MAP["LOW"])
 
     objections = perception.get("objections", [])
-    penalty = min(len(objections) * OBJECTION_PENALTY, MAX_OBJECTION_PENALTY)
 
-    computed = base - penalty
-    return round(max(10.0, min(100.0, computed)), 1)
+    # Apply graduated per-objection deductions (capped at MAX_OBJECTION_PENALTY)
+    total_penalty = 0.0
+    for i, _ in enumerate(objections):
+        # Use position-based cost; beyond the table, use the minimum cost
+        cost = OBJECTION_PENALTIES[i] if i < len(OBJECTION_PENALTIES) else OBJECTION_PENALTIES[-1]
+        total_penalty += cost
+        if total_penalty >= MAX_OBJECTION_PENALTY:
+            total_penalty = MAX_OBJECTION_PENALTY
+            break
+
+    computed = base - total_penalty
+    return round(max(MIN_PERCEPTION_SCORE, min(100.0, computed)), 1)
+def calculate_total_score(c_score: float, t_score: float, p_score: float) -> float:
+    """
+    Calculate the final weighted total score from sub-scores.
+    Uses the constants defined in SCORE_WEIGHTS.
+    """
+    total = (
+        c_score * SCORE_WEIGHTS["completeness"]
+        + t_score * SCORE_WEIGHTS["trust"]
+        + p_score * SCORE_WEIGHTS["perception"]
+    )
+    return round(total, 1)

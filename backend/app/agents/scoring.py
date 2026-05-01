@@ -21,6 +21,7 @@ from app.utils.scoring_rules import (
     score_completeness,
     score_trust,
     score_perception,
+    calculate_total_score,
     SCORE_WEIGHTS,
 )
 from app.utils.error_handler import agent_result
@@ -48,12 +49,7 @@ async def scoring_agent(state: StoreAnalysisState) -> StoreAnalysisState:
     p_score = score_perception(perception)
 
     # --- Weighted total ---
-    total = round(
-        c_score * SCORE_WEIGHTS["completeness"]
-        + t_score * SCORE_WEIGHTS["trust"]
-        + p_score * SCORE_WEIGHTS["perception"],
-        1,
-    )
+    total = calculate_total_score(c_score, t_score, p_score)
 
     # --- Perception gaps: objections raised by the LLM ---
     perception_gaps = perception.get("objections", [])

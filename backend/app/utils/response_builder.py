@@ -20,6 +20,14 @@ Sections built:
 
 from datetime import datetime, timezone
 from app.services.llm import MODELS   # primary model name
+from app.utils.scoring_rules import (
+    score_completeness,
+    score_trust,
+    score_perception,
+    calculate_total_score,
+    COMPLETENESS_WEIGHTS,
+)
+import copy
 
 # ---------------------------------------------------------------------------
 # Simulated buyer query (mirror of perception agent prompt)
@@ -217,6 +225,72 @@ def _score_status(score: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Simulation Engine — calculate REAL score gain
+# ---------------------------------------------------------------------------
+
+def _simulate_score_delta(state: dict, action_id: str) -> float:
+    """
+    Deterministically calculate the score gain for an action by re-running
+    the scoring logic on a modified copy of the state.
+    """
+    # 1. Current state components
+    products = state.get("products", [])
+    total_products = len(products)
+    issues = state.get("issues", [])
+    trust_signals = state.get("trust_signals", {})
+    perception = state.get("perception", {})
+
+    # 2. Calculate baseline score
+    c_base = score_completeness(issues, total_products)
+    t_base = score_trust(trust_signals)
+    p_base = score_perception(perception)
+    base_total = calculate_total_score(c_base, t_base, p_base)
+
+    # 3. Simulate fix on a clone
+    sim_issues = copy.deepcopy(issues)
+    sim_trust = copy.deepcopy(trust_signals)
+    sim_perception = copy.deepcopy(perception)
+
+    # --- Completeness Fixes ---
+    # Action ID matches issue type
+    if action_id in COMPLETENESS_WEIGHTS:
+        sim_issues = [i for i in sim_issues if i.get("type") != action_id]
+    
+    # --- Trust Fixes ---
+    # Policy issues
+    if action_id == "missing_return_policy" or action_id == "weak_return_policy":
+        sim_trust["return_policy"] = {"status": "present", "source": "simulated"}
+        # Also remove corresponding issues
+        sim_issues = [i for i in sim_issues if i.get("type") not in ["missing_return_policy", "weak_return_policy"]]
+    elif action_id == "missing_shipping_policy" or action_id == "weak_shipping_policy":
+        sim_trust["shipping_policy"] = {"status": "present", "source": "simulated"}
+        sim_issues = [i for i in sim_issues if i.get("type") not in ["missing_shipping_policy", "weak_shipping_policy"]]
+    elif action_id == "missing_privacy_policy" or action_id == "weak_privacy_policy":
+        sim_trust["privacy_policy"] = {"status": "present", "source": "simulated"}
+        sim_issues = [i for i in sim_issues if i.get("type") not in ["missing_privacy_policy", "weak_privacy_policy"]]
+    elif action_id == "missing_terms_policy" or action_id == "weak_terms_policy":
+        sim_trust["terms_policy"] = {"status": "present", "source": "simulated"}
+        sim_issues = [i for i in sim_issues if i.get("type") not in ["missing_terms_policy", "weak_terms_policy"]]
+    
+    # Boolean trust signals
+    elif action_id == "add_reviews":
+        sim_trust["has_reviews"] = True
+
+    # --- Perception Fixes ---
+    # (Optional: if we ever add specific perception fix actions)
+    
+    # 4. Re-calculate score
+    c_new = score_completeness(sim_issues, total_products)
+    t_new = score_trust(sim_trust)
+    p_new = score_perception(sim_perception)
+    new_total = calculate_total_score(c_new, t_new, p_new)
+
+    # Delta is always positive (or 0)
+    delta = round(max(0.0, new_total - base_total), 1)
+    return delta
+
+
+# ---------------------------------------------------------------------------
 # Overall analysis confidence (how reliable is the result)
 # ---------------------------------------------------------------------------
 
@@ -289,11 +363,14 @@ def _build_issues(state: dict) -> list[dict]:
             "description": f"Issue detected: {itype.replace('_', ' ')}.",
         })
 
+        # REAL impact calculation
+        real_impact = _simulate_score_delta(state, itype)
+
         result.append({
             "id": itype,
             "title": config["title"],
             "impact": config["impact"],
-            "score_impact": config["score_impact"],
+            "score_impact": real_impact,
             "description": config["description"],
             "affected_items": [
                 {"product_id": i.get("product_id"), "title": i.get("product_title", "")}
@@ -331,11 +408,17 @@ def _build_action_plan(state: dict, issues_structured: list[dict]) -> list[dict]
         if itype in seen:
             continue
         seen.add(itype)
+
+        # REAL gain calculation
+        gain = _simulate_score_delta(state, itype)
+        if gain <= 0.1: # Skip if negligible
+            continue
+
         actions.append({
             "_type":      itype,
             "title":      f"Fix: {issue['title']}",
             "description": issue.get("description", ""),
-            "score_gain": issue["score_impact"],
+            "score_gain": gain,
             "effort":     EFFORT_MAP.get(itype, "medium"),
             "guide_link": GUIDE_LINKS.get(itype, "https://help.shopify.com"),
         })
@@ -343,14 +426,16 @@ def _build_action_plan(state: dict, issues_structured: list[dict]) -> list[dict]
     # Reviews action — not covered by any issue type
     trust = state.get("trust_signals", {})
     if not trust.get("has_reviews") and "add_reviews" not in seen:
-        actions.append({
-            "_type":      "add_reviews",
-            "title":      "Enable Product Reviews",
-            "description": "Social proof is a top trust signal for AI agents. Install a reviews app and collect reviews from existing customers.",
-            "score_gain": 5,
-            "effort":     EFFORT_MAP["add_reviews"],
-            "guide_link": GUIDE_LINKS["add_reviews"],
-        })
+        gain = _simulate_score_delta(state, "add_reviews")
+        if gain > 0.1:
+            actions.append({
+                "_type":      "add_reviews",
+                "title":      "Enable Product Reviews",
+                "description": "Social proof is a top trust signal for AI agents. Install a reviews app and collect reviews from existing customers.",
+                "score_gain": gain,
+                "effort":     EFFORT_MAP["add_reviews"],
+                "guide_link": GUIDE_LINKS["add_reviews"],
+            })
 
     # Sort by score_gain, assign priority, strip internal _type key
     actions.sort(key=lambda x: -x["score_gain"])
@@ -421,60 +506,46 @@ def _build_what_if(state: dict) -> dict:
         issue_counts[i["type"]] = issue_counts.get(i["type"], 0) + 1
 
     # Build per-action gain list (top 8, sorted by gain)
-    actions: list[dict] = []
+    actions_potential: list[dict] = []
 
     # Product-level issues
-    if "missing_description" in issue_types:
-        n = issue_counts["missing_description"]
-        actions.append({"label": f"Add descriptions to {n} product(s)", "gain": 12})
+    for itype in ["missing_description", "missing_images", "missing_tags", "short_title", "no_variants"]:
+        if itype in issue_types:
+            n = issue_counts[itype]
+            gain = _simulate_score_delta(state, itype)
+            label = ""
+            if itype == "missing_description": label = f"Add descriptions to {n} product(s)"
+            elif itype == "missing_images": label = f"Upload images for {n} product(s)"
+            elif itype == "missing_tags": label = f"Tag {n} untagged product(s)"
+            elif itype == "short_title": label = f"Improve titles for {n} product(s)"
+            elif itype == "no_variants": label = f"Add variants/pricing to {n} product(s)"
+            
+            if gain > 0:
+                actions_potential.append({"label": label, "gain": gain})
 
-    if "missing_images" in issue_types:
-        n = issue_counts["missing_images"]
-        actions.append({"label": f"Upload images for {n} product(s)", "gain": 10})
-
-    # Policy issues — use detected issue_types so no duplicates with trust signals
-    if "missing_return_policy" in issue_types:
-        actions.append({"label": "Add Return & Refund Policy", "gain": 20})
-    elif "weak_return_policy" in issue_types:
-        actions.append({"label": "Improve Return Policy Clarity", "gain": 10})
-
-    if "missing_shipping_policy" in issue_types:
-        actions.append({"label": "Add Shipping Policy", "gain": 10})
-    elif "weak_shipping_policy" in issue_types:
-        actions.append({"label": "Improve Shipping Policy Detail", "gain": 5})
-
-    if "missing_privacy_policy" in issue_types:
-        actions.append({"label": "Add Privacy Policy", "gain": 10})
-    elif "weak_privacy_policy" in issue_types:
-        actions.append({"label": "Improve Privacy Policy Coverage", "gain": 5})
-
-    if "missing_terms_policy" in issue_types:
-        actions.append({"label": "Add Terms of Service", "gain": 5})
-    elif "weak_terms_policy" in issue_types:
-        actions.append({"label": "Improve Terms of Service Detail", "gain": 3})
-
-    if "missing_tags" in issue_types:
-        n = issue_counts["missing_tags"]
-        actions.append({"label": f"Tag {n} untagged product(s)", "gain": 7})
+    # Policy issues
+    for itype in ["missing_return_policy", "weak_return_policy", "missing_shipping_policy", "weak_shipping_policy", 
+                 "missing_privacy_policy", "weak_privacy_policy", "missing_terms_policy", "weak_terms_policy"]:
+        if itype in issue_types:
+            gain = _simulate_score_delta(state, itype)
+            label = ISSUE_CONFIG.get(itype, {}).get("title", itype)
+            if "Fix:" not in label and "Improve" not in label and "Add" not in label:
+                 label = f"Fix: {label}"
+            if gain > 0:
+                actions_potential.append({"label": label, "gain": gain})
 
     if not trust.get("has_reviews"):
-        actions.append({"label": "Enable Product Reviews", "gain": 5})
+        gain = _simulate_score_delta(state, "add_reviews")
+        if gain > 0:
+            actions_potential.append({"label": "Enable Product Reviews", "gain": gain})
 
-    if "short_title" in issue_types:
-        n = issue_counts["short_title"]
-        actions.append({"label": f"Improve titles for {n} product(s)", "gain": 5})
-
-    if "no_variants" in issue_types:
-        n = issue_counts["no_variants"]
-        actions.append({"label": f"Add variants/pricing to {n} product(s)", "gain": 5})
-
-    actions.sort(key=lambda x: -x["gain"])
+    actions_potential.sort(key=lambda x: -x["gain"])
 
     return {
         "current_score":   current,
         "potential_score": potential,
         "improvement":     improvement,
-        "actions":         actions[:8],
+        "actions":         actions_potential[:8],
     }
 
 
