@@ -27,6 +27,14 @@ export default function Home() {
       const data = await runAnalysis(cleaned);
       localStorage.setItem('analysis_result', JSON.stringify(data));
       localStorage.setItem('storeUrl', cleaned);
+      // Append to history for the Reports trend chart
+      const score = data?.score?.overall;
+      if (score !== undefined) {
+        const historyRaw = localStorage.getItem('analysis_history');
+        const history = historyRaw ? JSON.parse(historyRaw) : [];
+        history.push({ time: new Date().toISOString(), score });
+        localStorage.setItem('analysis_history', JSON.stringify(history.slice(-20)));
+      }
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Is the backend running?');
@@ -47,8 +55,13 @@ export default function Home() {
 
         <div className="w-full max-w-xl z-10">
           <div className="text-center mb-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-indigo-600 text-xs font-bold uppercase tracking-widest mb-6 shadow-sm">
-              <Sparkles className="w-3.5 h-3.5" /> AI Store Representation Optimizer
+            <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 shadow-xl mb-8 hover:scale-105 transition-transform cursor-default group">
+              <div className="p-1.5 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-lg shadow-inner group-hover:rotate-12 transition-transform">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-black tracking-tight text-slate-800">
+                StoreSense<span className="text-indigo-600">-AI</span>
+              </span>
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-4 leading-tight">
               How does AI <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-500">see your store?</span>

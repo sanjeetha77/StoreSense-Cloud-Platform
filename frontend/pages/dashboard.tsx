@@ -39,6 +39,18 @@ export default function Dashboard() {
       if (data.perception?.query) {
         setSimQuery(data.perception.query);
       }
+      // Persist score history for the Reports chart
+      const score = data?.score?.overall;
+      if (score !== undefined) {
+        const historyRaw = localStorage.getItem('analysis_history');
+        const history = historyRaw ? JSON.parse(historyRaw) : [];
+        // Only append if this is a new run (different from the last entry)
+        const lastScore = history.length > 0 ? history[history.length - 1].score : null;
+        if (lastScore !== score) {
+          history.push({ time: new Date().toISOString(), score });
+          localStorage.setItem('analysis_history', JSON.stringify(history.slice(-20)));
+        }
+      }
       setMounted(true);
     } catch {
       setMounted(true);
@@ -84,13 +96,13 @@ export default function Dashboard() {
   const issues = [...(rawIssues || [])].map((issue) => ({ 
     ...issue, 
     impactLabel: issue.impact === 'high' ? 'High Impact' : issue.impact === 'medium' ? 'Medium Impact' : 'Low Impact',
-    pts: issue.score_impact || 5
+    pts: issue.score_impact ?? 0
   })).sort((a, b) => b.pts - a.pts);
 
   // Map Action Plan Items
   const actions = [...(action_plan || [])].map((act) => ({
     ...act,
-    pts: act.score_gain || 5
+    pts: act.score_gain ?? 0
   }));
 
   // Calculations
@@ -194,12 +206,19 @@ export default function Dashboard() {
     }
   };
 
-  const completenessScore = score?.completeness || 72;
-  const trustScore = score?.trust || 58;
-  const perceptionScore = score?.perception || 74;
+  // Read directly from the backend breakdown — never fall back to hardcoded values.
+  // score?.breakdown holds { completeness, trust, perception } from response_builder.py
+  const completenessScore = score?.breakdown?.completeness ?? 0;
+  const trustScore        = score?.breakdown?.trust        ?? 0;
+  const perceptionScore   = score?.breakdown?.perception   ?? 0;
+  // Backend-computed analysis confidence (0-100)
+  const analysisConfidence = score?.confidence ?? 0;
 
-  const scoreStatus = currentScore >= 80 ? 'Good' : currentScore >= 60 ? 'Needs Improvement' : 'Poor';
-  const projScoreStatus = projectedScore >= 80 ? 'Good' : projectedScore >= 60 ? 'Needs Improvement' : 'Poor';
+  // Use backend-provided status label, or compute locally with same thresholds as response_builder.py
+  const scoreStatus = score?.status ||
+    (currentScore >= 80 ? 'Excellent' : currentScore >= 55 ? 'Good' : 'Needs Improvement');
+  const projScoreStatus =
+    projectedScore >= 80 ? 'Excellent' : projectedScore >= 55 ? 'Good' : 'Needs Improvement';
 
   return (
     <div className="max-w-[1400px] mx-auto pb-4">
@@ -246,7 +265,7 @@ export default function Dashboard() {
             </div>
             <div className="flex-1">
               <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>Confidence: 92%</span>
+                <span>Analysis Confidence: {analysisConfidence}%</span>
               </div>
               <div className="h-1.5 bg-slate-100 rounded-full w-full overflow-hidden">
                 <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${mainScore}%` }}></div>
@@ -310,7 +329,7 @@ export default function Dashboard() {
               {/* Tooltip */}
               <div className="absolute top-full left-0 mt-2 w-[320px] bg-[#111827] text-white text-xs leading-relaxed rounded-lg p-3 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                 <div className="absolute -top-1 left-6 w-3 h-3 bg-[#111827] rotate-45 rounded-sm"></div>
-                Assesses how AI agents perceive your store based on performance and user experience.
+                Assesses how AI agents perceive your store based on Store and Product Quality.
               </div>
             </div>
           </div>
@@ -395,7 +414,7 @@ export default function Dashboard() {
                       <span className={clsx(
                         "text-sm font-bold",
                         isResolved ? "text-gray-400" : "text-emerald-500"
-                      )}>+{issue.pts}</span>
+                      )}>+{Number(issue.pts).toFixed(1)}</span>
                       <span className="text-[10px] text-gray-400 block -mt-1 uppercase">pts</span>
                     </div>
                   </div>
@@ -496,7 +515,7 @@ export default function Dashboard() {
                       "text-xs font-bold",
                       isResolved ? "text-gray-300" : "text-emerald-500"
                     )}>
-                      +{action.pts} pts
+                      +{Number(action.pts).toFixed(1)} pts
                     </div>
                   </div>
                 );
@@ -505,7 +524,7 @@ export default function Dashboard() {
             
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
               <span className="text-xs text-gray-500 font-medium">Total potential improvement</span>
-              <span className="text-sm font-bold text-emerald-500">+{totalPotential} points</span>
+              <span className="text-sm font-bold text-emerald-500">+{Number(totalPotential).toFixed(1)} points</span>
             </div>
           </div>
         </div>
@@ -630,7 +649,7 @@ export default function Dashboard() {
                     "text-xs font-bold transition-colors",
                     isSimulated ? "text-gray-300" : "text-emerald-500"
                   )}>
-                    +{action.pts}
+                    +{Number(action.pts).toFixed(1)}
                   </span>
                 </div>
               );
