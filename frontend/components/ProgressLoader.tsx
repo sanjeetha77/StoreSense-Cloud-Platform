@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
 export function ProgressLoader({ 

@@ -202,7 +202,7 @@ export default function Dashboard() {
   const projScoreStatus = projectedScore >= 80 ? 'Good' : projectedScore >= 60 ? 'Needs Improvement' : 'Poor';
 
   return (
-    <div className="max-w-[1400px] mx-auto pb-12">
+    <div className="max-w-[1400px] mx-auto pb-4">
       <Head>
         <title>Dashboard | AI Store Optimizer</title>
       </Head>
@@ -258,9 +258,6 @@ export default function Dashboard() {
             <p className="text-sm text-gray-600 max-w-md">
               Your store {currentScore < 80 ? "needs improvement" : "is well optimized"} for AI recommendations. Addressing the top issues could increase your score significantly.
             </p>
-            <button className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1">
-              View Details <ArrowRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -327,9 +324,6 @@ export default function Dashboard() {
         <div className="lg:col-span-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-base font-bold text-gray-900">Top Issues</h2>
-            <button className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 shadow-sm">
-              <Filter className="w-4 h-4 text-gray-500" /> Filters
-            </button>
           </div>
 
           <div className="space-y-4">
@@ -518,7 +512,7 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom Section: AI Perception & What-If */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left: AI Perception Preview */}
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
