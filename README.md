@@ -63,7 +63,7 @@ StoreSense AI simulates an **AI buyer agent** and evaluates:
 
 Simulates:
 
-> “Would an AI recommend this store?”
+> “Would you(e.g chatgpt,claude) recommend this store?”
 
 Returns:
 
@@ -76,18 +76,36 @@ Returns:
 ##  Architecture
 
 ```mermaid
-graph LR
-    Start --> Ingest
-    Ingest --> Completeness
-    
-    Completeness --> Trust
-    Completeness --> Perception
-    
-    Trust --> Scoring
-    Perception --> Scoring
-    
-    Scoring --> Summarizer
-    Summarizer --> Recommendation
+flowchart TD
+
+    A[Shopify Store URL] --> B[Ingestion Agent]
+
+    B --> C{Ingestion Success?}
+    C -- No --> X[Return Error Response]
+
+    C -- Yes --> D[Completeness Agent]
+
+    D --> E[Trust Agent]
+    D --> F[Perception Agent (LLM)]
+
+    E -->|API Failure| E1[Fallback / Partial Data]
+    E1 --> G
+
+    F -->|LLM Failure| F1[Retry → Fallback → Rule-based]
+    F1 --> G
+
+    E --> G[Scoring Engine]
+    F --> G
+
+    G --> H[Summarizer Agent]
+    H --> I[Recommendation Agent]
+
+    I --> J[Response Builder]
+    J --> K[Frontend Dashboard]
+
+    style F fill:#e8f0fe
+    style G fill:#e6ffe6
+    style I fill:#fff3e0
 ```
 
 ---
@@ -222,13 +240,73 @@ POST /api/analyze
   "store_url": "your-store.myshopify.com"
 }
 ```
+---
+##  Demo Video Link
+https://youtu.be/t3bN97Y0vDU
+
+---
+##  Contribution Note
+
+This project was developed as a team effort with a clear division of responsibilities across product thinking and engineering.
 
 ---
 
-##  Contributors
+###  Product Thinking (Led by Sanjaykanth & Sanjeetha S)
 
-* Sanjaykanth M
-* Sanjeetha S
+* Defined the core problem: **AI discovery gap in e-commerce**
+* Designed the **AI readiness scoring framework** (Completeness, Trust, Perception)
+* Structured the **user journey and dashboard flow**
+* Identified key product tradeoffs:
+
+  * Accuracy vs latency (50 product sampling)
+  * AI vs deterministic boundaries
+* Defined what NOT to build (real-time monitoring, persistence) to maintain focus
+
+---
+
+###  Backend Engineering (Led by Sanjaykanth)
+
+* Designed and implemented the **LangGraph-based agentic pipeline**
+* Built core agents:
+
+  * Ingestion
+  * Completeness
+  * Trust
+  * Perception (LLM)
+  * Scoring
+  * Recommendation
+* Implemented **parallel execution** (Trust + Perception) for latency optimization
+* Designed **Shopify Admin API with fallback handling** and **LLM fallback strategy** (retry → degrade → rule-based)
+* Ensured the system is **stateless, modular, and failure-resilient**
+
+---
+
+###  Frontend Engineering (Led by Sanjeetha S)
+
+* Built the **dashboard UI using Next.js + Tailwind**
+* Integrated backend APIs and ensured **dynamic data rendering**
+* Designed user-friendly visualizations:
+
+  * Score breakdown
+  * Action plan
+  * AI perception insights
+* Focused on making **AI insights actionable** through **clear visual hierarchy** and minimal UI noise
+* Ensured **seamless backend-to-frontend data flow** for accurate, real-time representation of analysis
+
+---
+
+### ⚖️ Work Split
+
+* Product Thinking → ~40%
+* Backend Engineering → ~30%
+* Frontend & Integration → ~30%
+
+---
+
+###  Key Insight
+
+This project was not built as a UI demo, but as a **decision system** that translates AI trust into actionable signals for merchants.
+
 
 ---
 
