@@ -76,7 +76,7 @@ Returns:
 ##  Architecture
 
 ```mermaid
-flowchart TD
+flowchart LR
 
     A[Shopify Store URL] --> B[Ingestion Agent]
 
@@ -85,24 +85,26 @@ flowchart TD
 
     C -- Yes --> D[Completeness Agent]
 
+    %% Parallel Branch
     D --> E[Trust Agent]
-    D --> F[Perception Agent (LLM)]
+    D --> F["Perception Agent (LLM)"]
 
+    %% Failure paths
     E -->|API Failure| E1[Fallback / Partial Data]
-    E1 --> G
-
     F -->|LLM Failure| F1[Retry → Fallback → Rule-based]
-    F1 --> G
 
+    %% Merge
     E --> G[Scoring Engine]
     F --> G
 
     G --> H[Summarizer Agent]
     H --> I[Recommendation Agent]
 
+    %% Output
     I --> J[Response Builder]
     J --> K[Frontend Dashboard]
 
+    %% Notes
     style F fill:#e8f0fe
     style G fill:#e6ffe6
     style I fill:#fff3e0
