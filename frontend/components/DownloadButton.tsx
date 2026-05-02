@@ -6,7 +6,7 @@ export function DownloadButton() {
 
   const handleDownload = () => {
     setDownloading(true);
-    const result = sessionStorage.getItem('analysisResult');
+    const result = localStorage.getItem('analysis_result');
     if (!result) {
       alert("No analysis data found to export.");
       setDownloading(false);

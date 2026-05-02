@@ -9,6 +9,7 @@ export default function Reports() {
   const [issueData, setIssueData] = useState<any[]>([]);
   const [metrics, setMetrics] = useState({ score: 0, products: 0, issues: 0 });
   const [data, setData] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem('analysis_result');
@@ -58,6 +59,7 @@ export default function Reports() {
         }
       } catch (e) {}
     }
+    setMounted(true);
   }, []);
 
   return (
@@ -74,7 +76,7 @@ export default function Reports() {
         <div className="flex items-center gap-3">
           <button className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 transition-colors shadow-sm">
             <Calendar className="w-4 h-4 text-gray-500" />
-            Last Updated: {new Date().toLocaleString()}
+            Last Updated: {mounted ? new Date().toLocaleString() : '--'}
           </button>
           <DownloadButton />
         </div>

@@ -6,8 +6,8 @@ import {
   Play, MessageSquare, ArrowRight, Settings, Check, ChevronUp, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import clsx from 'clsx';
-import { ProgressLoader } from '../components/ProgressLoader';
-import { runAnalysis, simulatePerception } from '../services/api';
+
+import { simulatePerception } from '../services/api';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [simulationIssues, setSimulationIssues] = useState<string[]>([]);
   const [expandedIssues, setExpandedIssues] = useState<string[]>([]);
   const [expandedWhy, setExpandedWhy] = useState<string[]>([]);
-  const [isRerunning, setIsRerunning] = useState(false);
+
   
   // AI Perception state
   const [simQuery, setSimQuery] = useState('');
@@ -59,16 +59,7 @@ export default function Dashboard() {
 
   if (!mounted) return null;
 
-  if (isRerunning) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[70vh]">
-        <ProgressLoader 
-          message="Re-running Analysis Pipeline" 
-          subMessage="Validating your fixes against AI agent benchmarks..."
-        />
-      </div>
-    );
-  }
+
 
   if (!result) {
     return (
@@ -168,21 +159,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleRerun = async () => {
-    setIsRerunning(true);
-    try {
-      const storeUrl = localStorage.getItem('storeUrl') || '';
-      const newResult = await runAnalysis(storeUrl);
-      localStorage.setItem('analysis_result', JSON.stringify(newResult));
-      setResult(newResult);
-      setResolvedIssues([]);
-      window.scrollTo(0, 0);
-    } catch (err) {
-      alert("Failed to re-run analysis.");
-    } finally {
-      setIsRerunning(false);
-    }
-  };
+
 
   const handleSimulate = async () => {
     if (!simQuery.trim()) return;
@@ -460,13 +437,7 @@ export default function Dashboard() {
                   <h2 className="text-base font-bold text-gray-900 mb-1">Prioritized Action Plan</h2>
                   <p className="text-xs text-gray-500">Complete tasks in order for maximum impact</p>
                 </div>
-                <button 
-                  onClick={handleRerun}
-                  disabled={isRerunning}
-                  className="flex items-center gap-1.5 border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 shadow-sm transition-colors"
-                >
-                  <RefreshCw className={clsx("w-3.5 h-3.5", isRerunning && "animate-spin")} /> Re-run to Validate Changes
-                </button>
+
               </div>
               
               <div className="flex justify-between items-center text-xs text-gray-500 font-medium mb-1.5">

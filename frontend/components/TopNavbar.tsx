@@ -1,9 +1,9 @@
-import { Plus, RefreshCw, Clock, ExternalLink } from 'lucide-react';
+import { Plus, Clock, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import { runAnalysis } from '../services/api';
+
 
 export function TopNavbar() {
   const router = useRouter();
@@ -11,7 +11,7 @@ export function TopNavbar() {
   const [status, setStatus] = useState<'Success' | 'Running' | 'Error' | null>('Success');
   const [lastAnalyzedTime, setLastAnalyzedTime] = useState<number>(Date.now());
   const [relativeTime, setRelativeTime] = useState<string>('Just now');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+
 
   useEffect(() => {
     // Read from localStorage — consistent with index.tsx and dashboard.tsx
@@ -47,23 +47,7 @@ export function TopNavbar() {
 
 
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    setStatus('Running');
-    try {
-      const newResult = await runAnalysis(storeUrl);
-      sessionStorage.setItem('analysisResult', JSON.stringify(newResult));
-      setStatus('Success');
-      setLastAnalyzedTime(Date.now());
-      setRelativeTime('Just now');
-      window.dispatchEvent(new Event('storage')); // Trigger update across tabs if needed
-      if (router.pathname === '/dashboard') router.reload();
-    } catch {
-      setStatus('Error');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+
 
   return (
     <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm transition-all">
@@ -92,14 +76,7 @@ export function TopNavbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <button 
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="text-gray-500 hover:text-indigo-600 transition-colors p-1.5 rounded-lg hover:bg-indigo-50 flex items-center gap-1.5 text-sm font-medium border border-transparent hover:border-indigo-100 disabled:opacity-50"
-        >
-          <RefreshCw className={clsx("w-4 h-4", isRefreshing && "animate-spin")} />
-          <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-        </button>
+
         <Link 
           href="/"
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
