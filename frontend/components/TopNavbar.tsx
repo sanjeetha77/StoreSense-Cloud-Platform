@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-
+import { runAnalysis } from '../services/api';
 
 export function TopNavbar() {
   const router = useRouter();
