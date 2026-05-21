@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: default
+data:
+  SHOP_URL: "storesense-ai-test.myshopify.com"
+  SHOPIFY_API_VERSION: "2024-01"
+  PORT: "8000"

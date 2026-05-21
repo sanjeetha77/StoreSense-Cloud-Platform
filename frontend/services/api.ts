@@ -1,4 +1,16 @@
-const BASE_URL = "http://localhost:8000";
+const getBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    // If we are running in the browser and the host is localhost, use the local backend port.
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    // In production or k8s, Ingress routes /api to the backend. We can use relative path.
+    return "";
+  }
+  return "http://localhost:8000";
+};
+
+const BASE_URL = getBaseUrl();
 
 export async function runAnalysis(storeUrl: string) {
   const res = await fetch(`${BASE_URL}/api/analyze`, {

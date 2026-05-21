@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: default
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: storesense-ai-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SHOP_URL
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: SHOP_URL
+        - name: SHOPIFY_API_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: SHOPIFY_API_VERSION
+        - name: SHOPIFY_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: storesense-secrets
+              key: shopify-token
+        - name: GEMINI_API_KEY
+          value: "AIzaSyAaimp-4RX5GnuvYAz9mGmdalUOdTcdgVk"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20

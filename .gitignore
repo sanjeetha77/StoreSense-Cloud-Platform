@@ -1,8 +1,10 @@
 # Python
 __pycache__/
+backend/app/__pycache__/
 *.pyc
 .env
 
 # Node (frontend)
 node_modules/
 .next/
+frontend/tsconfig.tsbuildinfo

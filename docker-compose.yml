@@ -1,0 +1,109 @@
+services:
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: storesense-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SHOP_URL=storesense-ai-test.myshopify.com
+      - SHOPIFY_ACCESS_TOKEN=${SHOPIFY_ACCESS_TOKEN}
+      - SHOPIFY_API_VERSION=2024-01
+      - GEMINI_API_KEY=AIzaSyAaimp-4RX5GnuvYAz9mGmdalUOdTcdgVk
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    networks:
+      - storesense-network
+
+  # Next.js Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: storesense-frontend
+    ports:
+      - "3005:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - storesense-network
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.80.0
+    container_name: storesense-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector/otel-collector.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - tempo
+    networks:
+      - storesense-network
+
+  # Tempo (Distributed Tracing)
+  tempo:
+    image: grafana/tempo:2.1.1
+    container_name: storesense-tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./monitoring/tempo/tempo.yaml:/etc/tempo.yaml
+    ports:
+      - "3200:3200"
+    networks:
+      - storesense-network
+
+  # Loki (Log Aggregation)
+  loki:
+    image: grafana/loki:2.8.2
+    container_name: storesense-loki
+    command: [ "-config.file=/etc/loki/local-config.yaml" ]
+    volumes:
+      - ./monitoring/loki/local-config.yaml:/etc/loki/local-config.yaml
+    ports:
+      - "3101:3100"
+    networks:
+      - storesense-network
+
+  # Prometheus (Metrics Collector)
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: storesense-prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+    networks:
+      - storesense-network
+
+  # Grafana (Visualisation Dashboard)
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: storesense-grafana
+    volumes:
+      - ./monitoring/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - storesense-network
+
+networks:
+  storesense-network:
+    driver: bridge
