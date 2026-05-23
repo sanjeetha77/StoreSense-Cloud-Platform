@@ -9,13 +9,55 @@ on:
       - main
 
 env:
-  REGISTRY: ghcr.io
-  BACKEND_IMAGE_NAME: ${{ github.repository }}-backend
-  FRONTEND_IMAGE_NAME: ${{ github.repository }}-frontend
+  REGISTRY: docker.io
+  BACKEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/storesense-backend
+  FRONTEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/storesense-frontend
 
 jobs:
+  lint:
+    name: Lint Backend & Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Linting dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: Lint Python with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 ./backend --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all complex errors as warnings
+          flake8 ./backend --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package.json'
+
+      - name: Install Frontend DevDependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run Lint on Frontend
+        run: |
+          cd frontend
+          npm run lint
+
   build-and-push:
     name: Build & Push Docker Images
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,11 +71,33 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Log in to Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # --- Backend Build, Scan & Push ---
+      - name: Build Backend Image (Local Load)
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:scan-temp
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy Vulnerability Scan on Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:scan-temp'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
 
       - name: Extract Metadata for Backend
         id: meta-backend
@@ -45,16 +109,38 @@ jobs:
             type=ref,event=branch
             latest
 
-      - name: Build and Push Backend
+      - name: Push Backend Image
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v4
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # --- Frontend Build, Scan & Push ---
+      - name: Build Frontend Image (Local Load)
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:scan-temp
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy Vulnerability Scan on Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:scan-temp'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
 
       - name: Extract Metadata for Frontend
         id: meta-frontend
@@ -66,12 +152,13 @@ jobs:
             type=ref,event=branch
             latest
 
-      - name: Build and Push Frontend
+      - name: Push Frontend Image
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v4
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
@@ -95,23 +182,14 @@ jobs:
 
       - name: Substitute Container Images in Manifests
         run: |
-          sed -i "s|image: storesense-backend:latest|image: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }}|g" k8s/backend/deployment.yaml
-          sed -i "s|image: storesense-frontend:latest|image: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}|g" k8s/frontend/deployment.yaml
+          sed -i "s|image: storesense-ai-backend:latest|image: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }}|g" k8s/backend/deployment.yaml
+          sed -i "s|image: storesense-ai-frontend:latest|image: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}|g" k8s/frontend/deployment.yaml
 
-      - name: Apply ConfigMaps & Secrets
+      - name: Apply ConfigMaps
         run: |
           kubectl apply -f k8s/backend/configmap.yaml
-          kubectl apply -f k8s/mongodb/secret.yaml
-          kubectl apply -f k8s/mongodb/pvc.yaml
 
-      - name: Deploy MongoDB and Redis
-        run: |
-          kubectl apply -f k8s/mongodb/deployment.yaml
-          kubectl apply -f k8s/mongodb/service.yaml
-          kubectl apply -f k8s/redis/deployment.yaml
-          kubectl apply -f k8s/redis/service.yaml
-
-      - name: Deploy Monitoring Stack
+      - name: Deploy Monitoring & Observability Stack
         run: |
           kubectl apply -f k8s/monitoring/
           kubectl apply -f k8s/observability/
@@ -124,11 +202,24 @@ jobs:
           kubectl apply -f k8s/frontend/deployment.yaml
           kubectl apply -f k8s/frontend/service.yaml
 
-      - name: Apply Ingress Routing
+      - name: Apply Nginx Proxy Routing
         run: |
-          kubectl apply -f k8s/ingress/ingress.yaml
+          kubectl apply -f k8s/ingress/nginx-proxy.yaml
 
-      - name: Verify Deployment Rollout
+      - name: Verify Deployment Rollout & Handle Rollbacks
         run: |
-          kubectl rollout status deployment/backend --timeout=120s
-          kubectl rollout status deployment/frontend --timeout=120s
+          echo "Verifying Backend Rollout..."
+          kubectl rollout status deployment/backend --timeout=120s || (
+            echo "❌ Backend deployment failed! Initiating rollback..."
+            kubectl rollout undo deployment/backend
+            kubectl rollout status deployment/backend --timeout=60s
+            exit 1
+          )
+
+          echo "Verifying Frontend Rollout..."
+          kubectl rollout status deployment/frontend --timeout=120s || (
+            echo "❌ Frontend deployment failed! Initiating rollback..."
+            kubectl rollout undo deployment/frontend
+            kubectl rollout status deployment/frontend --timeout=60s
+            exit 1
+          )

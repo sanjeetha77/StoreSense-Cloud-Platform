@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     container_name: storesense-frontend
     ports:
-      - "3005:3000"
+      - "8080:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
@@ -93,10 +93,12 @@ services:
     container_name: storesense-grafana
     volumes:
       - ./monitoring/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./monitoring/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards/json
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
     ports:
-      - "3001:3000"
+      - "3010:3000"
     depends_on:
       - prometheus
       - loki

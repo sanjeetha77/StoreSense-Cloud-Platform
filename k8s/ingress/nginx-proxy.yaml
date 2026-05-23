@@ -11,6 +11,14 @@ data:
             listen 80;
             server_name storesense-ai.local localhost;
 
+            # Routing for Nginx status (used by Prometheus exporter sidecar)
+            location /nginx_status {
+                stub_status on;
+                access_log off;
+                allow 127.0.0.1;
+                deny all;
+            }
+
             # Routing for FastAPI Backend APIs
             location /api {
                 proxy_pass http://backend-service:8000;
@@ -25,6 +33,28 @@ data:
                 proxy_pass http://backend-service:8000;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
+            }
+
+            # Routing for OpenTelemetry traces (CORS handling)
+            location /v1/traces {
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                
+                proxy_pass http://otel-collector-service:4318/v1/traces;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
             }
 
             # Routing for Next.js Frontend
@@ -65,6 +95,21 @@ spec:
         - name: config
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
+      - name: exporter
+        image: nginx/nginx-prometheus-exporter:1.1.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - "-nginx.scrape-uri=http://127.0.0.1:80/nginx_status"
+        ports:
+        - containerPort: 9113
+          name: metrics
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
       volumes:
       - name: config
         configMap:
@@ -75,11 +120,16 @@ kind: Service
 metadata:
   name: nginx-proxy-service
   namespace: default
+  labels:
+    app: nginx-proxy
 spec:
   type: LoadBalancer
   ports:
   - name: http
     port: 8080
     targetPort: 80
+  - name: metrics
+    port: 9113
+    targetPort: 9113
   selector:
     app: nginx-proxy

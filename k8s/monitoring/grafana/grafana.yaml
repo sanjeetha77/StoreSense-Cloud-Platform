@@ -9,17 +9,43 @@ data:
     datasources:
     - name: Prometheus
       type: prometheus
+      uid: prometheus
       access: proxy
       url: http://prometheus-service:9090
       isDefault: true
+      jsonData:
+        httpMethod: POST
     - name: Loki
       type: loki
+      uid: loki
       access: proxy
       url: http://loki-service:3100
     - name: Tempo
       type: tempo
+      uid: tempo
       access: proxy
       url: http://tempo-service:3200
+      jsonData:
+        httpMethod: GET
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: default
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'storesense'
+      orgId: 1
+      folder: 'StoreSense'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /etc/grafana/provisioning/dashboards/json
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,27 +66,39 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:10.0.0
+        image: grafana/grafana:10.4.0
         ports:
         - containerPort: 3000
           name: grafana-web
         env:
         - name: GF_SECURITY_ADMIN_PASSWORD
           value: "admin123"
+        - name: GF_DASHBOARDS_MIN_REFRESH_INTERVAL
+          value: "30s"
         volumeMounts:
         - name: datasource-volume
           mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboards-provider-volume
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboard-json-volume
+          mountPath: /etc/grafana/provisioning/dashboards/json
         resources:
           limits:
-            cpu: "500m"
+            cpu: "250m"
             memory: "512Mi"
           requests:
-            cpu: "250m"
+            cpu: "100m"
             memory: "256Mi"
       volumes:
       - name: datasource-volume
         configMap:
           name: grafana-datasources
+      - name: dashboards-provider-volume
+        configMap:
+          name: grafana-dashboards-provider
+      - name: dashboard-json-volume
+        configMap:
+          name: storesense-dashboard
 ---
 apiVersion: v1
 kind: Service

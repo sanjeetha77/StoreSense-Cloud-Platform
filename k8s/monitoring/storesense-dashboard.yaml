@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storesense-dashboard
+  namespace: default
+  labels:
+    grafana_dashboard: "1"
+
+data:
+  storesense-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "uid": "storesense-unified-observability",
+        "title": "StoreSense‑AI Unified Observability",
+        "tags": ["storesense","observability"],
+        "timezone": "browser",
+        "schemaVersion": 38,
+        "version": 1,
+        "refresh": "30s",
+        "editable": true,
+        "panels": [
+          {
+            "type": "row",
+            "title": "SECTION 1 — PLATFORM OVERVIEW",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+            "panels": [
+              {
+                "type": "stat",
+                "title": "Total Requests",
+                "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+                "targets": [{"expr": "sum(rate(http_requests_total[1m]))", "refId": "A", "legendFormat": ""}],
+                "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"]}}
+              },
+              {
+                "type": "stat",
+                "title": "Success Rate %",
+                "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+                "targets": [{"expr": "sum(rate(http_requests_total{code=~\"2..\"}[1m])) / sum(rate(http_requests_total[1m])) * 100", "refId": "B"}],
+                "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"]}, "fieldOptions": {"defaults": {"unit": "percent"}}}
+              },
+              {
+                "type": "stat",
+                "title": "HTTP Error Rate %",
+                "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+                "targets": [{"expr": "sum(rate(http_requests_total{code=~\"5..\"}[1m])) / sum(rate(http_requests_total[1m])) * 100", "refId": "C"}],
+                "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"]}, "fieldOptions": {"defaults": {"unit": "percent"}}}
+              },
+              {
+                "type": "stat",
+                "title": "Active Requests",
+                "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+                "targets": [{"expr": "sum(http_requests_in_progress)", "refId": "D"}],
+                "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"]}}
+              }
+            ]
+          },
+          {
+            "type": "row",
+            "title": "SECTION 2 — API PERFORMANCE",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+            "panels": [
+              {
+                "type": "graph",
+                "title": "P95 API Latency (seconds)",
+                "gridPos": {"h": 6, "w": 8, "x": 0, "y": 6},
+                "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))", "refId": "E"}]
+              },
+              {
+                "type": "graph",
+                "title": "Average Response Time (seconds)",
+                "gridPos": {"h": 6, "w": 8, "x": 8, "y": 6},
+                "targets": [{"expr": "sum(rate(http_request_duration_seconds_sum[5m])) / sum(rate(http_request_duration_seconds_count[5m]))", "refId": "F"}]
+              },
+              {
+                "type": "stat",
+                "title": "Backend Throughput (req/s)",
+                "gridPos": {"h": 4, "w": 4, "x": 16, "y": 6},
+                "targets": [{"expr": "sum(rate(http_requests_total{app=\"storesense-backend\"}[1m]))", "refId": "G"}]
+              },
+              {
+                "type": "stat",
+                "title": "AI Analysis Duration (s)",
+                "gridPos": {"h": 4, "w": 4, "x": 20, "y": 6},
+                "targets": [{"expr": "histogram_quantile(0.5, sum(rate(ai_analysis_duration_seconds_bucket[5m])) by (le))", "refId": "H"}]
+              }
+            ]
+          },
+          {
+            "type": "row",
+            "title": "SECTION 3 — KUBERNETES HEALTH",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12},
+            "panels": [
+              {
+                "type": "stat",
+                "title": "Running Pods",
+                "gridPos": {"h": 4, "w": 4, "x": 0, "y": 13},
+                "targets": [{"expr": "sum(kube_pod_status_phase{phase=\"Running\"})", "refId": "I"}]
+              },
+              {
+                "type": "stat",
+                "title": "Failed Pods",
+                "gridPos": {"h": 4, "w": 4, "x": 4, "y": 13},
+                "targets": [{"expr": "sum(kube_pod_status_phase{phase=\"Failed\"})", "refId": "J"}]
+              },
+              {
+                "type": "table",
+                "title": "Pod Restarts",
+                "gridPos": {"h": 6, "w": 8, "x": 8, "y": 13},
+                "targets": [{"expr": "sum(kube_pod_container_status_restarts_total) by (pod)", "refId": "K"}]
+              },
+              {
+                "type": "stat",
+                "title": "CPU Usage (cores)",
+                "gridPos": {"h": 4, "w": 4, "x": 16, "y": 13},
+                "targets": [{"expr": "sum(rate(container_cpu_usage_seconds_total[30s]))", "refId": "L"}]
+              },
+              {
+                "type": "stat",
+                "title": "Memory Usage (MiB)",
+                "gridPos": {"h": 4, "w": 4, "x": 20, "y": 13},
+                "targets": [{"expr": "sum(container_memory_working_set_bytes) / 1024 / 1024", "refId": "M"}]
+              }
+            ]
+          },
+          {
+            "type": "row",
+            "title": "SECTION 5 — CENTRALIZED LOGGING (LOKI)",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 19},
+            "panels": [
+              {
+                "type": "logs",
+                "title": "Live Backend Logs",
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+                "datasource": "Loki",
+                "targets": [{"expr": "{app=\"storesense-backend\"}"}]
+              },
+              {
+                "type": "logs",
+                "title": "AI Pipeline Logs",
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+                "datasource": "Loki",
+                "targets": [{"expr": "{app=\"storesense-frontend\"}"}]
+              }
+            ]
+          },
+          {
+            "type": "row",
+            "title": "SECTION 6 — AI / LLM OBSERVABILITY",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28},
+            "panels": [
+              {
+                "type": "stat",
+                "title": "Gemini API Latency (s)",
+                "gridPos": {"h": 4, "w": 4, "x": 0, "y": 29},
+                "targets": [{"expr": "histogram_quantile(0.95, sum(rate(gemini_api_latency_seconds_bucket[5m])) by (le))", "refId": "N"}]
+              },
+              {
+                "type": "stat",
+                "title": "Fallback Count",
+                "gridPos": {"h": 4, "w": 4, "x": 4, "y": 29},
+                "targets": [{"expr": "sum(increase(gemini_fallback_total[5m]))", "refId": "O"}]
+              },
+              {
+                "type": "stat",
+                "title": "Token Usage",
+                "gridPos": {"h": 4, "w": 4, "x": 8, "y": 29},
+                "targets": [{"expr": "sum(rate(gemini_tokens_used_total[5m]))", "refId": "P"}]
+              },
+              {
+                "type": "stat",
+                "title": "Estimated Cost ($)",
+                "gridPos": {"h": 4, "w": 4, "x": 12, "y": 29},
+                "targets": [{"expr": "sum(rate(gemini_cost_usd_total[5m]))", "refId": "Q"}]
+              }
+            ]
+          },
+          {
+            "type": "row",
+            "title": "SECTION 7 — SLO / RELIABILITY",
+            "collapsed": false,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 34},
+            "panels": [
+              {
+                "type": "gauge",
+                "title": "API Availability %",
+                "gridPos": {"h": 6, "w": 6, "x": 0, "y": 35},
+                "targets": [{"expr": "avg_over_time(up{job=\"storesense-backend\"}[5m]) * 100", "refId": "R"}],
+                "options": {"fieldOptions": {"defaults": {"unit": "percent"}}}
+              },
+              {
+                "type": "gauge",
+                "title": "Latency SLO % (≤ 200 ms)",
+                "gridPos": {"h": 6, "w": 6, "x": 6, "y": 35},
+                "targets": [{"expr": "(sum(rate(http_request_duration_seconds_bucket{le=\"0.2\"}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))) * 100", "refId": "S"}],
+                "options": {"fieldOptions": {"defaults": {"unit": "percent"}}}
+              },
+              {
+                "type": "stat",
+                "title": "Error Budget Remaining (hours)",
+                "gridPos": {"h": 4, "w": 4, "x": 12, "y": 35},
+                "targets": [{"expr": "(1 - (sum(rate(http_requests_total{code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))) ) * 24", "refId": "T"}]
+              }
+            ]
+          }
+        ],
+        "templating": {"list": []},
+        "annotations": {"list": []}
+      },
+      "overwrite": true
+    }

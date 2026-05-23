@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storesense-backend
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storesense-backend
+  template:
+    metadata:
+      labels:
+        app: storesense-backend
+    spec:
+      containers:
+        - name: backend
+          image: storesense-ai-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SHOPIFY_ACCESS_TOKEN
+              value: "YOUR_SHOPIFY_TOKEN"
+          # Probes removed – will be added later
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

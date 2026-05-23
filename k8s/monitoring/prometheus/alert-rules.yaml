@@ -1,0 +1,79 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storesense-alert-rules
+  namespace: default
+  labels:
+    release: monitoring
+    app: kube-prometheus-stack
+spec:
+  groups:
+  - name: storesense-ai-alerts
+    rules:
+    - alert: GeminiLatencySpike
+      expr: histogram_quantile(0.95, sum(rate(storesense_gemini_api_latency_seconds_bucket[5m])) by (le)) > 5
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Gemini API latency is high (p95 > 5s)"
+        description: "Gemini API p95 execution time is {{ $value }}s on average over the last 5 minutes."
+    - alert: ModelFallbackSpike
+      expr: sum(increase(storesense_llm_fallback_total[5m])) > 2
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High LLM fallback rate"
+        description: "There have been {{ $value }} fallbacks to the secondary model in the last 5 minutes."
+    - alert: AnalysisPipelineFailures
+      expr: sum(rate(storesense_requests_total{endpoint=~".*analyze.*", http_status=~"5.*"}[5m])) / sum(rate(storesense_requests_total{endpoint=~".*analyze.*"}[5m])) * 100 > 5
+      for: 3m
+      labels:
+        severity: critical
+      annotations:
+        summary: "StoreSense analysis pipeline failure rate is high (> 5%)"
+        description: "Analysis pipeline failed requests constitute {{ $value }}% of total analysis traffic over the last 5 minutes."
+    - alert: AgentExecutionTimeout
+      expr: histogram_quantile(0.95, sum(rate(storesense_agent_execution_duration_seconds_bucket[5m])) by (le)) > 30
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "LangGraph agent execution timeout (p95 > 30s)"
+        description: "LangGraph agents p95 execution duration has reached {{ $value }}s, exceeding the 30s threshold."
+
+  - name: storesense-k8s-infra-alerts
+    rules:
+    - alert: PodRestartSpike
+      expr: sum(increase(kube_pod_container_status_restarts_total[10m])) by (pod, namespace) > 2
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Kubernetes pod is restarting frequently"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ $value }} times over the last 10 minutes."
+    - alert: PodCrashLooping
+      expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Kubernetes pod is in CrashLoopBackOff"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crashlooping."
+    - alert: PodHighCPUUtilization
+      expr: sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100 > 90
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod CPU usage is near limit (> 90%)"
+        description: "Pod {{ $labels.pod }} is utilizing {{ $value }}% of its allocated CPU limit."
+    - alert: PodHighMemoryUtilization
+      expr: sum(container_memory_working_set_bytes{container!=""}) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, namespace) * 100 > 90
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod memory usage is near limit (> 90%)"
+        description: "Pod {{ $labels.pod }} is utilizing {{ $value }}% of its allocated memory limit."

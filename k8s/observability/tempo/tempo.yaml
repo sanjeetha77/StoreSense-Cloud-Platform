@@ -7,6 +7,8 @@ data:
   tempo-config.yaml: |
     server:
       http_listen_port: 3200
+    overrides:
+      metrics_generator_processors: [service-graphs, span-metrics]
     distributor:
       receivers:
         otlp:
@@ -33,6 +35,18 @@ data:
           path: /var/tempo/traces
         wal:
           path: /var/tempo/wal
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+      processor:
+        service_graphs: {}
+        span_metrics: {}
+      storage:
+        path: /var/tempo/generator/wal
+        remote_write:
+          - url: http://prometheus-operated.default.svc.cluster.local:9090/api/v1/write
+            send_exemplars: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,6 +69,7 @@ spec:
       - name: tempo
         image: grafana/tempo:2.1.1
         args:
+        - "-target=all"
         - "-config.file=/etc/tempo/tempo-config.yaml"
         ports:
         - containerPort: 3200

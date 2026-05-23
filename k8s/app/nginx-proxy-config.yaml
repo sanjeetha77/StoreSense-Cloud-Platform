@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-config
+  namespace: default
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        # Forward root (/) to the Next.js frontend service
+        location / {
+            proxy_pass http://frontend-service:3000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # Forward /api and /health to the FastAPI backend service
+        location ~ ^/(api|health) {
+            proxy_pass http://backend-service:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }

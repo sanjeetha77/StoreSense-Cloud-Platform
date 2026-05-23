@@ -17,6 +17,7 @@ by the FastAPI route handler.
 """
 
 import logging
+import time
 from langgraph.graph import StateGraph, END
 from app.pipeline.state import StoreAnalysisState
 from app.agents.ingestion import ingest_agent
@@ -27,7 +28,47 @@ from app.agents.scoring import scoring_agent
 from app.agents.summarizer import summarizer_agent
 from app.agents.recommendation import recommendation_agent
 
+from app.observability.metrics import AGENT_DURATION
+from app.observability.tracing import tracer
+from opentelemetry import trace
+
 logger = logging.getLogger(__name__)
+
+def instrument_agent(agent_name: str, agent_func):
+    async def wrapper(state: StoreAnalysisState) -> StoreAnalysisState:
+        start_time = time.time()
+        status = "success"
+        with tracer.start_as_current_span(f"Agent: {agent_name}") as span:
+            span.set_attribute("agent.name", agent_name)
+            span.set_attribute("store.url", state.get("store_url", ""))
+            try:
+                result = await agent_func(state)
+                # Check if result contains errors
+                if isinstance(result, dict) and "errors" in result:
+                    agent_errors = [e for e in result["errors"] if e.get("agent") == agent_name]
+                    if agent_errors:
+                        status = "partial_error"
+                return result
+            except Exception as e:
+                status = "failure"
+                span.record_exception(e)
+                span.set_status(trace.StatusCode.ERROR, str(e))
+                raise e
+            finally:
+                duration = time.time() - start_time
+                AGENT_DURATION.labels(agent_name=agent_name, status=status).observe(duration)
+                
+                # Emit structured log for Loki / Grafana
+                duration_ms = int(duration * 1000)
+                logger.info(
+                    f"Agent: {agent_name} finished — status={status} duration={duration_ms}ms",
+                    extra={
+                        "agent": agent_name,
+                        "latency_ms": duration_ms,
+                        "status": status
+                    }
+                )
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -70,13 +111,13 @@ def build_pipeline():
     workflow = StateGraph(StoreAnalysisState)
 
     # --- Register nodes ---
-    workflow.add_node("ingest", ingest_agent)
-    workflow.add_node("completeness", completeness_agent)
-    workflow.add_node("trust", trust_agent)
-    workflow.add_node("perception", perception_agent)
-    workflow.add_node("scoring", scoring_agent)
-    workflow.add_node("summarizer", summarizer_agent)
-    workflow.add_node("recommendation", recommendation_agent)
+    workflow.add_node("ingest", instrument_agent("ingest", ingest_agent))
+    workflow.add_node("completeness", instrument_agent("completeness", completeness_agent))
+    workflow.add_node("trust", instrument_agent("trust", trust_agent))
+    workflow.add_node("perception", instrument_agent("perception", perception_agent))
+    workflow.add_node("scoring", instrument_agent("scoring", scoring_agent))
+    workflow.add_node("summarizer", instrument_agent("summarizer", summarizer_agent))
+    workflow.add_node("recommendation", instrument_agent("recommendation", recommendation_agent))
 
     # --- Entry point ---
     workflow.set_entry_point("ingest")

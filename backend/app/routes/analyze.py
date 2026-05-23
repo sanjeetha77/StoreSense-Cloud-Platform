@@ -12,6 +12,7 @@ The route is intentionally thin:
 """
 
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter
 from pydantic import BaseModel, field_validator
@@ -21,6 +22,7 @@ from app.pipeline.state import StoreAnalysisState
 from app.utils.response_builder import build_response
 from app.services.llm import MODELS
 from app.agents.perception import run_perception_simulation
+from app.observability.metrics import PIPELINE_DURATION, ANALYSIS_SUCCESS, ANALYSIS_FAILURE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -71,7 +73,8 @@ async def analyze_store(request: AnalyzeRequest):
 
     All response assembly is handled by response_builder.build_response().
     """
-    logger.info(f"[Route] 📥 Analyze request: {request.store_url}")
+    logger.info(f"[Route] 📥 Analyze request: {request.store_url}", extra={"status": "pending"})
+    start_time_sec = time.time()
     start_time = datetime.now(timezone.utc)
 
     # --- Initialize pipeline state ---
@@ -90,32 +93,56 @@ async def analyze_store(request: AnalyzeRequest):
         "status": "pending",
     }
 
-    # --- Execute pipeline ---
-    final_state = await pipeline.ainvoke(initial_state)
+    try:
+        # --- Execute pipeline ---
+        final_state = await pipeline.ainvoke(initial_state)
 
-    # --- Determine if LLM fallback was used ---
-    errors = final_state.get("errors", [])
-    llm_agents = {"perception", "recommendation"}
-    fallback_used = any(e.get("agent") in llm_agents for e in errors)
+        # --- Determine if LLM fallback was used ---
+        errors = final_state.get("errors", [])
+        llm_agents = {"perception", "recommendation"}
+        fallback_used = any(e.get("agent") in llm_agents for e in errors)
 
-    # Model actually used (written by recommendation agent, or default primary)
-    llm_model_used = final_state.get("llm_model_used", MODELS[0])
+        # Model actually used (written by recommendation agent, or default primary)
+        llm_model_used = final_state.get("llm_model_used", MODELS[0])
 
-    # --- Build structured, UI-ready response ---
-    response = build_response(
-        state=final_state,
-        start_time=start_time,
-        fallback_used=fallback_used,
-        llm_model_used=llm_model_used,
-    )
+        # --- Build structured, UI-ready response ---
+        response = build_response(
+            state=final_state,
+            start_time=start_time,
+            fallback_used=fallback_used,
+            llm_model_used=llm_model_used,
+        )
 
-    logger.info(
-        f"[Route] ✅ Done — status={response['status']} "
-        f"score={response['score']['overall']} "
-        f"time={response['meta']['analysis_time']}"
-    )
+        duration = time.time() - start_time_sec
+        PIPELINE_DURATION.observe(duration)
+        ANALYSIS_SUCCESS.labels(store_url=request.store_url).inc()
 
-    return response
+        duration_ms = int(duration * 1000)
+        logger.info(
+            f"[Route] ✅ Done — status={response['status']} "
+            f"score={response['score']['overall']} "
+            f"time={response['meta']['analysis_time']}",
+            extra={
+                "status": response["status"],
+                "latency_ms": duration_ms
+            }
+        )
+
+        return response
+
+    except Exception as e:
+        duration = time.time() - start_time_sec
+        ANALYSIS_FAILURE.labels(store_url=request.store_url, error_type=type(e).__name__).inc()
+        duration_ms = int(duration * 1000)
+        logger.error(
+            f"[Route] ❌ Pipeline failed: {str(e)}",
+            extra={
+                "status": "failed",
+                "latency_ms": duration_ms
+            },
+            exc_info=True
+        )
+        raise e
 
 
 @router.post("/simulate")

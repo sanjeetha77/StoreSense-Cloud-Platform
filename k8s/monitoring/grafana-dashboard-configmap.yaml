@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-storesense
+  namespace: default
+  labels:
+    grafana_dashboard: "1"
+
+data:
+  storesense-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "uid": "storesense-unified-observability",
+        "title": "StoreSense‑AI Unified Observability",
+        "tags": ["storesense","observability"],
+        "timezone": "browser",
+        "schemaVersion": 38,
+        "version": 1,
+        "refresh": "30s",
+        "editable": true,
+        "panels": []
+      },
+      "overwrite": true
+    }
