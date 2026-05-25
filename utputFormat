@@ -1,0 +1,6 @@
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=UTF-8
+Date: Sun, 24 May 2026 19:36:37 GMT
+Content-Length: 43
+
+parse error : syntax error: unexpected $end

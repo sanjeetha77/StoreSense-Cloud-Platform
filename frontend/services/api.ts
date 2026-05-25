@@ -13,6 +13,8 @@ const getBaseUrl = () => {
 const BASE_URL = getBaseUrl();
 
 export async function runAnalysis(storeUrl: string) {
+  console.log("Frontend API request started");
+  console.error("Frontend error example");
   const res = await fetch(`${BASE_URL}/api/analyze`, {
     method: "POST",
     headers: { 'Content-Type': 'application/json' },

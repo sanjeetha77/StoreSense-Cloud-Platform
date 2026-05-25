@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: default
+  labels:
+    app: promtail
+  annotations:
+    # Promtail configuration for log collection from key pods
+    # It scrapes all pods in the "default" namespace that have an "app" label
+    # matching one of the monitored components.
+
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      log_level: info
+    positions:
+      filename: /tmp/positions.yaml
+    clients:
+      - url: http://loki-service:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: varlogs
+        static_configs:
+          - targets: ['localhost']
+            labels:
+              job: varlogs
+              __path__: /var/log/containers/*.log
+        pipeline_stages:
+        - regex:
+            source: filename
+            expression: '.*/containers/(?P<pod>[^_]+)_(?P<namespace>[^_]+)_(?P<container>.+)-(?P<container_id>[0-9a-f]+)\.log'
+        - template:
+            source: container
+            output: app
+            template: "{{ if eq .container \"backend\" }}storesense-backend{{ else if eq .container \"frontend\" }}storesense-frontend{{ else if eq .container \"nginx-proxy\" }}nginx-proxy{{ else }}{{ .container }}{{ end }}"
+        - labels:
+            pod:
+            namespace:
+            container:
+            container_id:
+            app:
+         # drop stage removed – all namespaces allowed

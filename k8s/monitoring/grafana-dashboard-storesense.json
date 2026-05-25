@@ -104,15 +104,15 @@
           },
           {
             "type": "stat",
-            "title": "CPU Usage (cores)",
+            "title": "Pod CPU Usage (cores)",
             "gridPos": {"h": 4, "w": 4, "x": 16, "y": 13},
-            "targets": [{"expr": "sum(rate(container_cpu_usage_seconds_total[30s]))", "refId": "L"}]
+            "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total[30s]))", "refId": "L"}]
           },
           {
             "type": "stat",
-            "title": "Memory Usage (MiB)",
+            "title": "Pod Memory Usage (MiB)",
             "gridPos": {"h": 4, "w": 4, "x": 20, "y": 13},
-            "targets": [{"expr": "sum(container_memory_working_set_bytes) / 1024 / 1024", "refId": "M"}]
+            "targets": [{"expr": "sum by (pod) (container_memory_working_set_bytes) / 1024 / 1024", "refId": "M"}]
           }
         ]
       },

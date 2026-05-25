@@ -88,7 +88,7 @@ spec:
       containers:
       - name: nginx
         image: nginx:alpine
-        imagePullPolicy: Never  # Use the cached image loaded into Minikube
+        imagePullPolicy: IfNotPresent  # Use the cached image loaded into Minikube if available, otherwise pull
         ports:
         - containerPort: 80
         volumeMounts:

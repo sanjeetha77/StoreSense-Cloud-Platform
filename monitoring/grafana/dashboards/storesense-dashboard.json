@@ -37,7 +37,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\"}[5m])) / count(node_cpu_seconds_total{mode=\"idle\"}) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod!=\"\"}[5m])) / count(node_cpu_seconds_total{mode=\"idle\"}) * 100",
           "legendFormat": "CPU %",
           "refId": "A"
         }
@@ -66,7 +66,7 @@
       },
       "targets": [
         {
-          "expr": "sum(container_memory_usage_bytes{namespace=~\"$namespace\"}) / sum(machine_memory_bytes) * 100",
+          "expr": "sum(container_memory_usage_bytes{namespace=~\"$namespace\", pod!=\"\"}) / sum(machine_memory_bytes) * 100",
           "legendFormat": "Mem %",
           "refId": "A"
         }
@@ -95,7 +95,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m])) by (pod)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\"}[5m])) by (pod)",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }
@@ -126,7 +126,7 @@
       },
       "targets": [
         {
-          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}) by (pod)",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\"}) by (pod)",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }
